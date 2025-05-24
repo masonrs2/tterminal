@@ -494,7 +494,10 @@ export default function TradingTerminal() {
     }
   }, [state.viewportState.timeZoom, state.viewportState.timeOffset, state.mousePosition, state.backgroundColor, state.indicatorSettings.cvd, candleData])
 
-  // Draw liquidations with extended crosshair
+  // Store liquidation bars data to avoid redrawing on mouse move
+  const liquidationBarsRef = React.useRef<ImageData | null>(null)
+
+  // Draw liquidations bars (stable - doesn't change on mouse move)
   useEffect(() => {
     const canvas = liquidationsCanvasRef.current
     if (!canvas) return
@@ -509,7 +512,7 @@ export default function TradingTerminal() {
     ctx.fillStyle = state.backgroundColor
     ctx.fillRect(0, 0, canvas.offsetWidth, canvas.offsetHeight)
 
-    // Generate realistic liquidation data based on price movements and volume
+    // Generate stable liquidation data (using candle index as seed for consistency)
     const spacing = 12 * state.viewportState.timeZoom
     candleData.forEach((candle, index) => {
       const x = index * spacing + 50 - state.viewportState.timeOffset
@@ -520,23 +523,51 @@ export default function TradingTerminal() {
       const volumeIntensity = candle.volume / 1000 // More sensitive volume normalization
       const wickSize = (candle.high - candle.low) / candle.close
       
-      // Base liquidation intensity - more generous calculation
-      const baseIntensity = priceMove * 200 + volumeIntensity * 0.8 + wickSize * 30
-      const randomFactor = 0.3 + Math.random() * 0.7 // 30-100% random factor
-      const liquidationIntensity = baseIntensity * randomFactor
-      const clampedIntensity = Math.min(liquidationIntensity, 25)
+      // Enhanced liquidation calculation to match Market Monkey scale
+      const baseIntensity = priceMove * 300 + volumeIntensity * 1.5 + wickSize * 40
       
-      // Show more liquidations - lower threshold
-      if (clampedIntensity > 0.3) {
-        const height = Math.max(2, (clampedIntensity / 25) * canvas.offsetHeight)
-        const isHighLiquidation = clampedIntensity > state.indicatorSettings.liquidations.threshold
+      // Use candle timestamp as seed for consistent random factor (doesn't change on mouse move)
+      const seed = (candle.timestamp * 9301 + index * 49297) % 233280
+      const randomFactor = 0.4 + (seed / 233280) * 0.8 // Deterministic "random" based on candle
+      const liquidationIntensity = baseIntensity * randomFactor
+      
+      // Normalize to 0-100 scale for better height distribution
+      const normalizedIntensity = Math.min(liquidationIntensity * 10, 100)
+      
+      // Show liquidations with much lower threshold for more activity
+      if (normalizedIntensity > 5) {
+        // Scale height to fill component like Market Monkey (5-95% of height)
+        const minHeight = canvas.offsetHeight * 0.05 // 5% minimum height
+        const maxHeight = canvas.offsetHeight * 0.95 // 95% maximum height
+        const scaledHeight = minHeight + (normalizedIntensity / 100) * (maxHeight - minHeight)
+        
+        const isHighLiquidation = normalizedIntensity > state.indicatorSettings.liquidations.threshold
         ctx.fillStyle = isHighLiquidation ? state.indicatorSettings.liquidations.color : "#00ff88"
-        ctx.fillRect(x, canvas.offsetHeight - height, Math.max(4, 8 * state.viewportState.timeZoom), height)
+        
+        // Bar width scales with time zoom but has minimum visibility
+        const barWidth = Math.max(3, 8 * state.viewportState.timeZoom)
+        ctx.fillRect(x, canvas.offsetHeight - scaledHeight, barWidth, scaledHeight)
       }
     })
 
-    // Draw crosshair vertical line
+    // Store the bars data for crosshair overlay
+    liquidationBarsRef.current = ctx.getImageData(0, 0, canvas.offsetWidth * 2, canvas.offsetHeight * 2)
+  }, [state.viewportState.timeZoom, state.viewportState.timeOffset, state.backgroundColor, state.indicatorSettings.liquidations, candleData])
+
+  // Draw crosshair overlay for liquidations (separate effect for mouse movement)
+  useEffect(() => {
+    const canvas = liquidationsCanvasRef.current
+    if (!canvas || !liquidationBarsRef.current) return
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    // Restore the bars without regenerating them
+    ctx.putImageData(liquidationBarsRef.current, 0, 0)
+
+    // Draw crosshair if mouse is active
     if (state.mousePosition.x > 0) {
+      ctx.scale(2, 2)
       ctx.strokeStyle = "#ffffff"
       ctx.lineWidth = 1
       ctx.setLineDash([2, 2])
@@ -546,7 +577,7 @@ export default function TradingTerminal() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [state.viewportState.timeZoom, state.viewportState.timeOffset, state.mousePosition, state.backgroundColor, state.indicatorSettings.liquidations, candleData])
+  }, [state.mousePosition.x]) // Only depends on mouse X position
 
   // Dedicated axis mouse handlers to prevent conflicts with canvas
   const handleAxisMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {

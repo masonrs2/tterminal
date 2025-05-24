@@ -359,12 +359,12 @@ export const useChartInteractions = ({
         timeZoom: Math.max(0.05, Math.min(50, prev.timeZoom * dynamicZoomFactor))
       }))
     } else {
-      // ⚡ 360 ZOOM - Fast but controllable ⚡
-      // Balanced parameters for smooth navigation
-      const sensitivity = Math.abs(e.deltaY) / 30 // More controlled than before
+      // ⚡ 360 ZOOM - Smooth and precise ⚡
+      // More conservative parameters for better control
+      const sensitivity = Math.abs(e.deltaY) / 60 // Slower sensitivity (was 30)
       const zoomFactor = e.deltaY > 0 
-        ? Math.max(0.2, 1 - sensitivity * 0.6)  // Smooth zoom out
-        : Math.min(4.0, 1 + sensitivity * 0.8)  // Smooth zoom in
+        ? Math.max(0.4, 1 - sensitivity * 0.4)  // Gentler zoom out (was 0.2 and 0.6)
+        : Math.min(2.5, 1 + sensitivity * 0.5)  // Gentler zoom in (was 4.0 and 0.8)
         
       setViewportState(prev => ({
         ...prev,
