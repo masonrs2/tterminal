@@ -5,7 +5,7 @@ This trading terminal has been refactored from a single 1500+ line file into a m
 
 ## Architecture
 
-### 📁 File Structure
+###  File Structure
 ```
 trading-terminal/
 ├── types/trading/
@@ -29,7 +29,7 @@ trading-terminal/
 
 ## Key Components
 
-### 🎯 State Management (`useTradingState`)
+###  State Management (`useTradingState`)
 Centralizes all application state including:
 - Trading data (price, timeframe, candles)
 - UI state (dropdowns, panels, settings)
@@ -37,21 +37,21 @@ Centralizes all application state including:
 - Viewport and zoom settings
 - Component dimensions
 
-### 🖱️ Interactions (`useChartInteractions`)
+###  Interactions (`useChartInteractions`)
 Handles all user interactions:
 - Mouse events (move, click, drag)
 - Keyboard shortcuts (Delete, Escape)
 - Drawing tool management
 - Zoom and pan controls
 
-### 🧮 Utilities (`calculations.ts`)
+###  Utilities (`calculations.ts`)
 Pure functions for:
 - Time remaining calculations
 - Coordinate transformations
 - Drawing collision detection
 - Date formatting
 
-### 🎨 Components
+###  Components
 Modular UI components:
 - **TopNavigation**: Main app navigation
 - **SymbolTabs**: Trading pair management
