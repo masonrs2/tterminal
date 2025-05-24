@@ -29,10 +29,28 @@ import { MainChart } from './components/trading-terminal/charts/MainChart'
 import HighPerformanceOrderbook from './components/orderbook'
 import type { CandleData, VolumeProfileEntry, HeatmapData } from './types/trading'
 
-// Generate realistic historical trading data (500 candles)
+// Seeded random number generator for consistent data generation
+class SeededRandom {
+  private seed: number
+
+  constructor(seed: number) {
+    this.seed = seed
+  }
+
+  random(): number {
+    const x = Math.sin(this.seed++) * 10000
+    return x - Math.floor(x)
+  }
+}
+
+// Create seeded random instance with fixed seed for consistency
+const seededRandom = new SeededRandom(12345)
+
+// Generate realistic historical trading data (500 candles) with seeded randomness
 const generateRealisticCandleData = (): CandleData[] => {
   const candles: CandleData[] = []
-  const baseTime = Date.now() - 3600000 * 500 // 500 hours ago
+  // Use fixed timestamp for consistent data generation (Jan 1, 2024)
+  const baseTime = 1704067200000 - 3600000 * 500 // 500 hours before Jan 1, 2024
   let currentPrice = 108000 // Starting price
   
   for (let i = 0; i < 500; i++) {
@@ -40,26 +58,26 @@ const generateRealisticCandleData = (): CandleData[] => {
     
     // Realistic price movement with trends and volatility
     const trend = Math.sin(i / 50) * 0.002 // Long-term trend
-    const noise = (Math.random() - 0.5) * 0.008 // Random volatility
-    const momentum = (Math.random() - 0.5) * 0.004 // Momentum component
+    const noise = (seededRandom.random() - 0.5) * 0.008 // Random volatility
+    const momentum = (seededRandom.random() - 0.5) * 0.004 // Momentum component
     
     const priceChange = trend + noise + momentum
     currentPrice *= (1 + priceChange)
     
     // Generate OHLC with realistic wicks
     const open = currentPrice
-    const volatility = 0.015 + Math.random() * 0.01 // 1.5-2.5% volatility
-    const high = open * (1 + Math.random() * volatility)
-    const low = open * (1 - Math.random() * volatility)
+    const volatility = 0.015 + seededRandom.random() * 0.01 // 1.5-2.5% volatility
+    const high = open * (1 + seededRandom.random() * volatility)
+    const low = open * (1 - seededRandom.random() * volatility)
     
     // Close price tends to stay within range but can break out
-    const closeDirection = Math.random() - 0.5
+    const closeDirection = seededRandom.random() - 0.5
     const close = open + (closeDirection * (high - low) * 0.7)
     currentPrice = Math.max(low, Math.min(high, close))
     
     // Realistic volume with higher volume on big moves
     const priceMovement = Math.abs(close - open) / open
-    const baseVolume = 800 + Math.random() * 400
+    const baseVolume = 800 + seededRandom.random() * 400
     const volumeMultiplier = 1 + (priceMovement * 5) // Higher volume on big moves
     const volume = Math.floor(baseVolume * volumeMultiplier)
     
@@ -78,7 +96,7 @@ const generateRealisticCandleData = (): CandleData[] => {
 
 const candleData: CandleData[] = generateRealisticCandleData()
 
-// Generate realistic volume profile based on price levels
+// Generate realistic volume profile based on price levels with seeded randomness
 const generateVolumeProfile = (): VolumeProfileEntry[] => {
   const profile: VolumeProfileEntry[] = []
   const priceMin = Math.min(...candleData.map(c => c.low))
@@ -100,7 +118,7 @@ const generateVolumeProfile = (): VolumeProfileEntry[] => {
     })
     
     if (totalVolume > 50) { // Only include significant levels
-      const type = Math.random() > 0.5 ? "buy" : "sell"
+      const type = seededRandom.random() > 0.5 ? "buy" : "sell"
       profile.push({
         price: Math.round(price * 100) / 100,
         volume: Math.floor(totalVolume),
@@ -114,20 +132,20 @@ const generateVolumeProfile = (): VolumeProfileEntry[] => {
 
 const volumeProfile: VolumeProfileEntry[] = generateVolumeProfile()
 
-// Generate realistic heatmap data across the chart
+// Generate realistic heatmap data across the chart with seeded randomness
 const generateHeatmapData = (): HeatmapData[] => {
   const heatmap: HeatmapData[] = []
   
   // Generate heatmap points for significant price/time areas
   for (let timeIndex = 50; timeIndex < candleData.length - 50; timeIndex += 10) {
     for (let priceLevel = 0; priceLevel < 20; priceLevel++) {
-      if (Math.random() > 0.7) { // 30% chance of heatmap point
+      if (seededRandom.random() > 0.7) { // 30% chance of heatmap point
         const candle = candleData[timeIndex]
         const priceRange = candle.high - candle.low
         const baseIntensity = candle.volume / 1000
         
         // Higher intensity around high volume areas
-        const intensity = baseIntensity * (0.5 + Math.random() * 1.5)
+        const intensity = baseIntensity * (0.5 + seededRandom.random() * 1.5)
         
         heatmap.push({
           x: timeIndex,
@@ -143,32 +161,34 @@ const generateHeatmapData = (): HeatmapData[] => {
 
 const heatmapData: HeatmapData[] = generateHeatmapData()
 
-const orderbook = {
-  asks: [
-    { price: 108000.0, size: 0.026, total: 0.026 },
-    { price: 108001.0, size: 0.011, total: 0.037 },
-    { price: 108002.0, size: 0.005, total: 0.042 },
-    { price: 108003.0, size: 0.002, total: 0.044 },
-    { price: 108004.0, size: 0.001, total: 0.045 },
-    { price: 108005.0, size: 0.004, total: 0.049 },
-    { price: 108006.0, size: 0.007, total: 0.056 },
-    { price: 108007.0, size: 0.02, total: 0.076 },
-    { price: 108008.0, size: 0.007, total: 0.083 },
-    { price: 108009.0, size: 2.178, total: 2.261 },
-  ],
-  bids: [
-    { price: 107674.0, size: 7.926, total: 7.926 },
-    { price: 107673.0, size: 1.186, total: 9.112 },
-    { price: 107672.0, size: 0.003, total: 9.115 },
-    { price: 107671.0, size: 0.002, total: 9.117 },
-    { price: 107670.0, size: 0.072, total: 9.189 },
-    { price: 107669.0, size: 0.005, total: 9.194 },
-    { price: 107668.0, size: 0.002, total: 9.196 },
-    { price: 107667.0, size: 0.006, total: 9.202 },
-    { price: 107666.0, size: 0.005, total: 9.207 },
-    { price: 107665.0, size: 0.235, total: 9.442 },
-  ],
+// Generate realistic orderbook data with enough entries to fill the height
+const generateOrderbookData = () => {
+  const asks = []
+  const bids = []
+  const currentPrice = candleData[candleData.length - 1]?.close || 108000
+  
+  let total = 0
+  // Generate 100 ask levels (above current price)
+  for (let i = 0; i < 100; i++) {
+    const price = currentPrice + (i + 1) * 0.1
+    const size = seededRandom.random() * 5 + 0.001
+    total += size
+    asks.push({ price: Math.round(price * 10) / 10, size: Math.round(size * 1000) / 1000, total: Math.round(total * 1000) / 1000 })
+  }
+  
+  total = 0
+  // Generate 100 bid levels (below current price)
+  for (let i = 0; i < 100; i++) {
+    const price = currentPrice - (i + 1) * 0.1
+    const size = seededRandom.random() * 5 + 0.001
+    total += size
+    bids.push({ price: Math.round(price * 10) / 10, size: Math.round(size * 1000) / 1000, total: Math.round(total * 1000) / 1000 })
+  }
+  
+  return { asks, bids }
 }
+
+const orderbook = generateOrderbookData()
 
 export default function TradingTerminal() {
   // Centralized state management
@@ -716,7 +736,14 @@ export default function TradingTerminal() {
           {/* Indicator Info Overlay */}
           <div className="absolute top-2 left-4 z-10 space-y-1">
             <div className="text-xs">
-              <span>binancef btcusdt - </span>
+              <span 
+                className="cursor-pointer hover:text-blue-300 hover:bg-blue-900/20 px-1 rounded transition-colors"
+                onClick={() => state.setShowChartSettings(!state.showChartSettings)}
+                title="Click to open chart settings"
+              >
+                binancef btcusdt
+              </span>
+              <span> - </span>
               {state.hoveredCandle ? (
                 <span>
                   O {state.hoveredCandle.open.toFixed(2)} H {state.hoveredCandle.high.toFixed(2)} L {state.hoveredCandle.low.toFixed(2)} C{" "}
@@ -944,6 +971,54 @@ export default function TradingTerminal() {
                     className="w-8 h-8 rounded"
                   />
                 </div>
+
+                <hr className="border-gray-600" />
+
+                <div className="flex items-center justify-between">
+                  <span>Show Vertical Grid</span>
+                  <input
+                    type="checkbox"
+                    checked={state.indicatorSettings.chart.showVerticalGrid}
+                    onChange={(e) => updateIndicatorSetting("chart", "showVerticalGrid", e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span>Show Horizontal Grid</span>
+                  <input
+                    type="checkbox"
+                    checked={state.indicatorSettings.chart.showHorizontalGrid}
+                    onChange={(e) => updateIndicatorSetting("chart", "showHorizontalGrid", e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span>Grid Color</span>
+                  <input
+                    type="color"
+                    value={state.indicatorSettings.chart.gridColor}
+                    onChange={(e) => updateIndicatorSetting("chart", "gridColor", e.target.value)}
+                    className="w-8 h-8 rounded"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span>Grid Opacity</span>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="1.0"
+                      step="0.1"
+                      value={state.indicatorSettings.chart.gridOpacity}
+                      onChange={(e) => updateIndicatorSetting("chart", "gridOpacity", Number.parseFloat(e.target.value))}
+                      className="w-32"
+                    />
+                    <span className="w-8 text-center">{state.indicatorSettings.chart.gridOpacity.toFixed(1)}</span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -1063,6 +1138,7 @@ export default function TradingTerminal() {
 
         {/* High-Performance Orderbook */}
         {state.showOrderbook && (
+          <div className="flex-shrink-0 h-full">
           <HighPerformanceOrderbook
             bids={orderbook.bids}
             asks={orderbook.asks}
@@ -1071,6 +1147,7 @@ export default function TradingTerminal() {
             onResize={(width) => state.setComponentSizes(prev => ({ ...prev, orderbookWidth: width }))}
             onClose={() => state.setShowOrderbook(false)}
           />
+          </div>
         )}
       </div>
     </div>

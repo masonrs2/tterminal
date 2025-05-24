@@ -153,21 +153,37 @@ export const MainChart: React.FC<MainChartProps> = ({
     const priceMin = Math.min(...candleData.map(c => c.low))
     const priceRange = priceMax - priceMin
     const chartHeight = canvas.offsetHeight - 100
+    
+    // Calculate line end position for consistent use across components (where price axis begins)
+    const lineEndX = canvas.offsetWidth - (showOrderbook ? 200 : 80)
 
     // Draw grid
-    ctx.strokeStyle = "#333333"
     ctx.lineWidth = 0.5
-    for (let i = 0; i < canvas.offsetWidth; i += 50 * viewportState.timeZoom) {
-      ctx.beginPath()
-      ctx.moveTo(i, 0)
-      ctx.lineTo(i, canvas.offsetHeight)
-      ctx.stroke()
+    
+    // Draw vertical grid lines
+    if (indicatorSettings.chart.showVerticalGrid) {
+      ctx.strokeStyle = indicatorSettings.chart.gridColor
+      ctx.globalAlpha = indicatorSettings.chart.gridOpacity
+      for (let i = 0; i < canvas.offsetWidth; i += 50 * viewportState.timeZoom) {
+        ctx.beginPath()
+        ctx.moveTo(i, 0)
+        ctx.lineTo(i, canvas.offsetHeight)
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
     }
-    for (let i = 0; i < canvas.offsetHeight; i += 30 * viewportState.priceZoom) {
-      ctx.beginPath()
-      ctx.moveTo(0, i)
-      ctx.lineTo(canvas.offsetWidth, i)
-      ctx.stroke()
+    
+    // Draw horizontal grid lines
+    if (indicatorSettings.chart.showHorizontalGrid) {
+      ctx.strokeStyle = indicatorSettings.chart.gridColor
+      ctx.globalAlpha = indicatorSettings.chart.gridOpacity
+      for (let i = 0; i < canvas.offsetHeight; i += 30 * viewportState.priceZoom) {
+        ctx.beginPath()
+        ctx.moveTo(0, i)
+        ctx.lineTo(canvas.offsetWidth, i)
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
     }
 
     // Draw volume bars in background
@@ -207,12 +223,13 @@ export const MainChart: React.FC<MainChartProps> = ({
       })
     }
 
-    // Draw volume profile (VPVR)
+    // Draw volume profile (VPVR) - positioned right at the price axis boundary
     if (activeIndicators.includes("VPVR")) {
       const maxVolume = Math.max(...volumeProfile.map((v) => v.volume))
-      const profileWidth = 150
-      const chartWidth = showOrderbook ? canvas.offsetWidth - 200 : canvas.offsetWidth - 80
-      const startX = chartWidth - profileWidth - 20
+      const profileWidth = 80 // Width for volume bars
+      
+      // Position VPVR to end exactly where the price axis overlay begins
+      const priceAxisStart = canvas.offsetWidth - (showOrderbook ? 200 : 80)
 
       volumeProfile.forEach((profile) => {
         const y = 50 + ((priceMax - profile.price) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
@@ -225,35 +242,32 @@ export const MainChart: React.FC<MainChartProps> = ({
           ctx.fillStyle = profile.type === "buy" ? indicatorSettings.vpvr.bullColor + "B3" : indicatorSettings.vpvr.bearColor + "B3"
         }
 
-        if (indicatorSettings.vpvr.origin === "right") {
-          ctx.fillRect(startX + profileWidth - width, y - 2, width, 4)
-        } else {
-          ctx.fillRect(startX, y - 2, width, 4)
-        }
+        // Draw each volume bar ending exactly at the price axis boundary
+        ctx.fillRect(priceAxisStart - width, y - 2, width, 4)
       })
     }
 
-    // Draw support/resistance lines (cleaned up, no text labels)
-    ctx.strokeStyle = "#4a90e2"
-    ctx.lineWidth = 1
-    ctx.setLineDash([])
-    
-    // Only draw if within reasonable bounds
-    const supportLevel = 50 + (chartHeight * 0.7)
-    const resistanceLevel = 50 + (chartHeight * 0.3)
-    
-    ctx.beginPath()
-    ctx.moveTo(0, supportLevel)
-    ctx.lineTo(canvas.offsetWidth - 80, supportLevel)
-    ctx.stroke()
+          // Draw support/resistance lines (cleaned up, no text labels)
+      ctx.strokeStyle = "#4a90e2"
+      ctx.lineWidth = 1
+      ctx.setLineDash([])
+      
+      // Only draw if within reasonable bounds
+      const supportLevel = 50 + (chartHeight * 0.7)
+      const resistanceLevel = 50 + (chartHeight * 0.3)
+      
+      ctx.beginPath()
+      ctx.moveTo(0, supportLevel)
+      ctx.lineTo(lineEndX, supportLevel)
+      ctx.stroke()
 
-    ctx.strokeStyle = "#666666"
-    ctx.setLineDash([5, 5])
-    ctx.beginPath()
-    ctx.moveTo(0, resistanceLevel)
-    ctx.lineTo(canvas.offsetWidth - 80, resistanceLevel)
-    ctx.stroke()
-    ctx.setLineDash([])
+      ctx.strokeStyle = "#666666"
+      ctx.setLineDash([5, 5])
+      ctx.beginPath()
+      ctx.moveTo(0, resistanceLevel)
+      ctx.lineTo(lineEndX, resistanceLevel)
+      ctx.stroke()
+      ctx.setLineDash([])
 
     // Draw candlesticks with dynamic price scaling
     const candleWidth = 8 * viewportState.timeZoom
@@ -295,7 +309,7 @@ export const MainChart: React.FC<MainChartProps> = ({
     const currentY = 50 + ((priceMax - currentPrice) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
     ctx.beginPath()
     ctx.moveTo(0, currentY)
-    ctx.lineTo(canvas.offsetWidth - 200, currentY)
+    ctx.lineTo(lineEndX, currentY)
     ctx.stroke()
     ctx.setLineDash([])
 
@@ -314,7 +328,7 @@ export const MainChart: React.FC<MainChartProps> = ({
       // Horizontal line
       ctx.beginPath()
       ctx.moveTo(0, mousePosition.y)
-      ctx.lineTo(canvas.offsetWidth - 200, mousePosition.y)
+      ctx.lineTo(lineEndX, mousePosition.y)
       ctx.stroke()
 
       ctx.setLineDash([])
@@ -402,6 +416,15 @@ export const MainChart: React.FC<MainChartProps> = ({
       >
         <div className="flex flex-col justify-between h-full py-2 text-xs">
           {(() => {
+            // Ensure consistent rendering between server and client
+            if (candleData.length === 0) {
+              return Array.from({ length: 9 }, (_, i) => (
+                <div key={i} className="text-right pr-2">
+                  {(108000 + i * 1000).toFixed(1)}
+                </div>
+              ))
+            }
+            
             const priceMax = Math.max(...candleData.map(c => c.high))
             const priceMin = Math.min(...candleData.map(c => c.low))
             const priceStep = (priceMax - priceMin) / 8
@@ -416,7 +439,7 @@ export const MainChart: React.FC<MainChartProps> = ({
             })
           })()}
           <div className="text-right pr-2 bg-red-600 text-white px-1 rounded text-xs" style={{ marginTop: "2px" }} suppressHydrationWarning={true}>
-            {getTimeRemaining(selectedTimeframe)}
+            {typeof window !== 'undefined' ? getTimeRemaining(selectedTimeframe) : '00:00'}
           </div>
         </div>
       </div>

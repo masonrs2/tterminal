@@ -139,11 +139,11 @@ export default function HighPerformanceOrderbook({
       {/* Orderbook content with virtual scrolling */}
       <div 
         ref={scrollContainerRef}
-        className="flex-1 overflow-hidden flex flex-col"
+        className="flex-1 overflow-auto flex flex-col min-h-0"
       >
-        {/* Asks (top half) */}
-        <div className="flex-1 flex flex-col-reverse overflow-hidden">
-          {reversedAsks.slice(0, 20).map((ask, index) => (
+        {/* Asks section */}
+        <div className="flex-shrink-0">
+          {reversedAsks.slice(0, 30).map((ask, index) => (
             <OrderbookRow
               key={`ask-${ask.price}`}
               entry={ask}
@@ -154,13 +154,13 @@ export default function HighPerformanceOrderbook({
         </div>
 
         {/* Current Price */}
-        <div className="bg-blue-600 px-2 py-1 text-center text-sm font-bold flex-shrink-0">
+        <div className="bg-blue-600 px-2 py-1 text-center text-sm font-bold flex-shrink-0 sticky top-0 z-10">
           {currentPrice.toFixed(1)}
         </div>
 
-        {/* Bids (bottom half) */}
-        <div className="flex-1 overflow-hidden">
-          {bids.slice(0, 20).map((bid, index) => (
+        {/* Bids section */}
+        <div className="flex-shrink-0">
+          {bids.slice(0, 30).map((bid, index) => (
             <OrderbookRow
               key={`bid-${bid.price}`}
               entry={bid}

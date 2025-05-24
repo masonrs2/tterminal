@@ -78,6 +78,12 @@ export interface IndicatorSettings {
     intensity: number
     colorScheme: string
   }
+  chart: {
+    showVerticalGrid: boolean
+    showHorizontalGrid: boolean
+    gridColor: string
+    gridOpacity: number
+  }
 }
 
 export interface ViewportState {
