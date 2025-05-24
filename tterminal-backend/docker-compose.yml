@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: tterminal-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tterminal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    command: ["postgres", "-c", "shared_preload_libraries=timescaledb"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tterminal"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: tterminal-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  timescaledb_data:
+  redis_data: 

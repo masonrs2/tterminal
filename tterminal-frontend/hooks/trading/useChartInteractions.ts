@@ -3,9 +3,9 @@
  * Manages mouse events, drawing tools, and chart interactions with ultra-fast axis-specific zoom
  */
 
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { screenToChartCoordinates, isPointInDrawing } from '../../utils/trading/calculations'
-import type { CandleData, Drawing, ViewportState, DragState } from '../../types/trading'
+import type { CandleData, Drawing, ViewportState, DragState, MeasuringSelection } from '../../types/trading'
 
 interface UseChartInteractionsProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -15,6 +15,8 @@ interface UseChartInteractionsProps {
   selectedDrawingIndex: number | null
   viewportState: ViewportState
   dragState: DragState
+  measuringSelection: MeasuringSelection
+  isCreatingMeasurement: boolean
   setHoveredCandle: (candle: CandleData | null) => void
   setMousePosition: (pos: any) => void
   setDrawingTools: (tools: Drawing[] | ((prev: Drawing[]) => Drawing[])) => void
@@ -23,6 +25,8 @@ interface UseChartInteractionsProps {
   setSelectedDrawingTool: (tool: string | null) => void
   setDragState: (state: DragState | ((prev: DragState) => DragState)) => void
   setViewportState: (state: ViewportState | ((prev: ViewportState) => ViewportState)) => void
+  setMeasuringSelection: (selection: MeasuringSelection | ((prev: MeasuringSelection) => MeasuringSelection)) => void
+  setIsCreatingMeasurement: (creating: boolean) => void
 }
 
 export const useChartInteractions = ({
@@ -33,6 +37,8 @@ export const useChartInteractions = ({
   selectedDrawingIndex,
   viewportState,
   dragState,
+  measuringSelection,
+  isCreatingMeasurement,
   setHoveredCandle,
   setMousePosition,
   setDrawingTools,
@@ -41,7 +47,13 @@ export const useChartInteractions = ({
   setSelectedDrawingTool,
   setDragState,
   setViewportState,
+  setMeasuringSelection,
+  setIsCreatingMeasurement,
 }: UseChartInteractionsProps) => {
+
+  // Use ref to avoid stale closure issues with candleData
+  const candleDataRef = useRef(candleData)
+  candleDataRef.current = candleData
 
   /**
    * Detect if mouse is over Y-axis (price axis) or X-axis (time axis)
@@ -77,6 +89,15 @@ export const useChartInteractions = ({
       const rect = canvas.getBoundingClientRect()
       const x = event.clientX - rect.left
       const y = event.clientY - rect.top
+
+      if (isCreatingMeasurement) {
+        console.log('Canvas mouse move while creating measurement:', { x, y, isCreatingMeasurement })
+      } else {
+        // Debug: log when mouse move happens but no measuring tool active
+        if (drawingMode === "Measuring Tool") {
+          console.log('Mouse move with measuring tool selected but not creating:', { drawingMode, isCreatingMeasurement })
+        }
+      }
 
       // Handle active axis dragging only
       if (dragState.isDraggingPrice) {
@@ -114,6 +135,54 @@ export const useChartInteractions = ({
         return
       }
 
+      // Handle measuring tool creation
+      if (isCreatingMeasurement) {
+        const { timeIndex: endTimeIndex, price: endPrice } = screenToChartCoordinates(
+          x, y, canvas, 
+          viewportState.timeZoom, 
+          viewportState.priceZoom,
+          viewportState.timeOffset, 
+          viewportState.priceOffset
+        )
+        
+        // Calculate distance to see if we should activate the selection
+        const distance = Math.sqrt(
+          Math.pow(x - measuringSelection.startX, 2) + 
+          Math.pow(y - measuringSelection.startY, 2)
+        )
+        
+        // Only activate if user has dragged at least 10 pixels
+        const isActive = distance > 10
+        
+        if (distance > 5) { // Only log when there's some movement to reduce spam
+          console.log('Measuring tool move:', { 
+            x, y, endTimeIndex, endPrice, distance, isActive,
+            startX: measuringSelection.startX,
+            startY: measuringSelection.startY,
+            isCreatingMeasurement
+          })
+        }
+
+        if (isActive) {
+          console.log('Measuring selection is now ACTIVE - rectangle should appear')
+        }
+        
+        setMeasuringSelection(prev => {
+          const newSelection = {
+            ...prev,
+            endX: x,
+            endY: y,
+            endTimeIndex,
+            endPrice,
+            isActive,
+          }
+          console.log('Updating measuring selection:', newSelection)
+          return newSelection
+        })
+        
+        return
+      }
+
       // Detect axis zones and update cursor
       const axisZone = getAxisZone(x, y, canvas)
       if (axisZone === 'price-axis') {
@@ -130,20 +199,20 @@ export const useChartInteractions = ({
       const startX = 50
       const candleIndex = Math.floor((x - startX + viewportState.timeOffset) / spacing)
 
-      if (candleIndex >= 0 && candleIndex < candleData.length) {
-        setHoveredCandle(candleData[candleIndex])
+      if (candleIndex >= 0 && candleIndex < candleDataRef.current.length) {
+        setHoveredCandle(candleDataRef.current[candleIndex])
       }
 
       // Calculate price at mouse position with dynamic range
       const chartHeight = canvas.offsetHeight - 100
-      const priceMax = Math.max(...candleData.map(c => c.high))
-      const priceMin = Math.min(...candleData.map(c => c.low))
+      const priceMax = Math.max(...candleDataRef.current.map(c => c.high))
+      const priceMin = Math.min(...candleDataRef.current.map(c => c.low))
       const priceRange = (priceMax - priceMin) / viewportState.priceZoom
       const price = priceMax - ((y - 50 + viewportState.priceOffset) / chartHeight) * priceRange
 
       setMousePosition({ x, y, price })
     },
-    [viewportState, candleData, dragState, setHoveredCandle, setMousePosition, setViewportState, setDragState, getAxisZone]
+    [viewportState.timeZoom, viewportState.priceZoom, viewportState.timeOffset, viewportState.priceOffset, dragState.isDraggingPrice, dragState.isDraggingTime, dragState.isDraggingChart, measuringSelection.startX, measuringSelection.startY, isCreatingMeasurement, getAxisZone]
   )
 
   /**
@@ -156,6 +225,8 @@ export const useChartInteractions = ({
     const rect = canvas.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
+
+    console.log('Mouse down event:', { drawingMode, isCreatingMeasurement, x, y })
 
     // Check for axis dragging first - this takes priority
     const axisZone = getAxisZone(x, y, canvas)
@@ -240,7 +311,7 @@ export const useChartInteractions = ({
           price1: price,
           time1: 0,
           price2: price,
-          time2: candleData.length,
+          time2: candleDataRef.current.length,
           color: "#ffff00",
           lineWidth: 1,
         },
@@ -260,13 +331,30 @@ export const useChartInteractions = ({
           lineWidth: 1,
         },
       ])
+    } else if (drawingMode === "Measuring Tool") {
+      // Start measuring selection (but don't make it active until dragging)
+      console.log('Starting measuring tool:', { x, y, timeIndex, price, drawingMode })
+      setMeasuringSelection({
+        startX: x,
+        startY: y,
+        endX: x,
+        endY: y,
+        startTimeIndex: timeIndex,
+        endTimeIndex: timeIndex,
+        startPrice: price,
+        endPrice: price,
+        isActive: false, // Don't activate until we start dragging
+      })
+      setIsCreatingMeasurement(true)
+      console.log('Set isCreatingMeasurement to true')
+      return // Important: return early to prevent other handlers from interfering
     }
 
     // Let the trading terminal handle chart panning - don't set isDraggingChart here
-  }, [canvasRef, viewportState, drawingTools, drawingMode, candleData, setDrawingTools, setSelectedDrawingIndex, setDrawingMode, setSelectedDrawingTool, setDragState, getAxisZone])
+  }, [canvasRef, viewportState.timeZoom, viewportState.priceZoom, viewportState.timeOffset, viewportState.priceOffset, drawingTools, drawingMode, setDrawingTools, setSelectedDrawingIndex, setDrawingMode, setSelectedDrawingTool, setDragState, setMeasuringSelection, setIsCreatingMeasurement, getAxisZone])
 
   /**
-   * Handle mouse up events to stop axis dragging
+   * Handle mouse up events to stop axis dragging only (measuring tool handled separately)
    */
   const handleAxisDragEnd = useCallback(() => {
     setDragState(prev => ({
@@ -279,6 +367,29 @@ export const useChartInteractions = ({
       isDraggingLiquidations: false
     }))
   }, [setDragState])
+
+  /**
+   * Handle mouse up specifically for measuring tool
+   */
+  const handleMeasuringToolMouseUp = useCallback(() => {
+    // Always finish measuring tool when mouse is released
+    if (isCreatingMeasurement) {
+      if (measuringSelection.isActive) {
+        console.log('Finishing measuring tool creation with active selection - keeping measurement')
+        // Keep the measurement visible but stop creating mode
+        setIsCreatingMeasurement(false)
+        setDrawingMode(null)
+        setSelectedDrawingTool(null)
+      } else {
+        console.log('Finishing measuring tool creation without selection - canceling')
+        // Cancel the measurement entirely
+        setIsCreatingMeasurement(false)
+        setDrawingMode(null)
+        setSelectedDrawingTool(null)
+        setMeasuringSelection(prev => ({ ...prev, isActive: false }))
+      }
+    }
+  }, [isCreatingMeasurement, measuringSelection.isActive, setIsCreatingMeasurement, setDrawingMode, setSelectedDrawingTool, setMeasuringSelection])
 
   /**
    * Handle keyboard shortcuts for drawing management
@@ -300,6 +411,9 @@ export const useChartInteractions = ({
         setSelectedDrawingIndex(null)
         setDrawingMode(null)
         setSelectedDrawingTool(null)
+        // Clear measuring selection
+        setMeasuringSelection(prev => ({ ...prev, isActive: false }))
+        setIsCreatingMeasurement(false)
         // Stop any dragging
         setDragState(prev => ({
           ...prev,
@@ -317,7 +431,7 @@ export const useChartInteractions = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [selectedDrawingIndex, setDrawingTools, setSelectedDrawingIndex, setDrawingMode, setSelectedDrawingTool, setDragState])
+  }, [selectedDrawingIndex, setDrawingTools, setSelectedDrawingIndex, setDrawingMode, setSelectedDrawingTool, setDragState, setMeasuringSelection, setIsCreatingMeasurement])
 
   /**
    * Handle wheel events for ultra-fast zooming with axis detection
@@ -424,12 +538,13 @@ export const useChartInteractions = ({
         }
       })
     }
-  }, [setViewportState, getAxisZone])
+  }, [canvasRef, setViewportState, getAxisZone])
 
   return {
     handleMouseMove,
     handleCanvasMouseDown,
     handleAxisDragEnd,
+    handleMeasuringToolMouseUp,
     handleWheel,
   }
 } 

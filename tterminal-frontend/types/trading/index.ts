@@ -52,6 +52,18 @@ export interface Drawing {
   lineWidth: number
 }
 
+export interface MeasuringSelection {
+  startX: number
+  startY: number
+  endX: number
+  endY: number
+  startTimeIndex: number
+  endTimeIndex: number
+  startPrice: number
+  endPrice: number
+  isActive: boolean
+}
+
 export interface IndicatorSettings {
   vpvr: {
     enableFixedTicks: boolean

@@ -11,9 +11,11 @@ import type {
   ViewportState, 
   IndicatorSettings,
   VolumeProfileEntry,
-  HeatmapData 
+  HeatmapData,
+  MeasuringSelection 
 } from '../../../types/trading'
 import { getTimeRemaining } from '../../../utils/trading/calculations'
+import { MeasuringToolTooltip } from './MeasuringToolTooltip'
 
 interface MainChartProps {
   candleData: CandleData[]
@@ -32,6 +34,7 @@ interface MainChartProps {
   bearCandleColor: string
   indicatorSettings: IndicatorSettings
   showOrderbook: boolean
+  measuringSelection: MeasuringSelection
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   onMouseMove: (event: React.MouseEvent<HTMLCanvasElement>) => void
   onMouseDown: (event: React.MouseEvent<HTMLCanvasElement>) => void
@@ -40,6 +43,7 @@ interface MainChartProps {
   onMouseMoveCapture: (event: React.MouseEvent<HTMLCanvasElement>) => void
   onContextMenu: (event: React.MouseEvent<HTMLCanvasElement>) => void
   onAxisWheel?: (axisType: 'price', deltaY: number) => void
+  onClearMeasuring: () => void
   className?: string
 }
 
@@ -60,6 +64,7 @@ export const MainChart: React.FC<MainChartProps> = ({
   bearCandleColor,
   indicatorSettings,
   showOrderbook,
+  measuringSelection,
   canvasRef,
   onMouseMove,
   onMouseDown,
@@ -68,6 +73,7 @@ export const MainChart: React.FC<MainChartProps> = ({
   onMouseMoveCapture,
   onContextMenu,
   onAxisWheel,
+  onClearMeasuring,
   className = ""
 }) => {
 
@@ -373,6 +379,52 @@ export const MainChart: React.FC<MainChartProps> = ({
         }
       }
     })
+
+    // Draw measuring tool selection box
+    console.log('MainChart useEffect - measuring selection check:', { 
+      isActive: measuringSelection.isActive,
+      startX: measuringSelection.startX,
+      endX: measuringSelection.endX
+    })
+    
+    if (measuringSelection.isActive) {
+      const startX = Math.min(measuringSelection.startX, measuringSelection.endX)
+      const startY = Math.min(measuringSelection.startY, measuringSelection.endY)
+      const width = Math.abs(measuringSelection.endX - measuringSelection.startX)
+      const height = Math.abs(measuringSelection.endY - measuringSelection.startY)
+
+      console.log('Drawing measuring selection:', { 
+        startX, startY, width, height, 
+        isActive: measuringSelection.isActive,
+        startTimeIndex, endTimeIndex,
+        startPrice, endPrice, isGainSelection
+      })
+
+      // Determine color based on price direction
+      const startTimeIndex = Math.min(measuringSelection.startTimeIndex, measuringSelection.endTimeIndex)
+      const endTimeIndex = Math.max(measuringSelection.startTimeIndex, measuringSelection.endTimeIndex)
+      const startCandle = candleData[Math.max(0, startTimeIndex)]
+      const endCandle = candleData[Math.min(candleData.length - 1, endTimeIndex)]
+      
+      const startPrice = startCandle?.close || measuringSelection.startPrice
+      const endPrice = endCandle?.close || measuringSelection.endPrice
+      const isGainSelection = endPrice > startPrice
+
+      // Use blue for gains, red for losses
+      const strokeColor = isGainSelection ? "#4a90e2" : "#ff4444"
+      const fillColor = isGainSelection ? "rgba(74, 144, 226, 0.1)" : "rgba(255, 68, 68, 0.1)"
+
+      // Draw selection rectangle
+      ctx.strokeStyle = strokeColor
+      ctx.lineWidth = 2
+      ctx.setLineDash([4, 4])
+      ctx.strokeRect(startX, startY, width, height)
+      ctx.setLineDash([])
+
+      // Fill with semi-transparent color
+      ctx.fillStyle = fillColor
+      ctx.fillRect(startX, startY, width, height)
+    }
   }, [
     candleData,
     volumeProfile,
@@ -389,6 +441,7 @@ export const MainChart: React.FC<MainChartProps> = ({
     bearCandleColor,
     indicatorSettings,
     showOrderbook,
+    measuringSelection,
   ])
 
   return (
@@ -403,6 +456,14 @@ export const MainChart: React.FC<MainChartProps> = ({
         onMouseLeave={onMouseLeave}
         onMouseMoveCapture={onMouseMoveCapture}
         onContextMenu={onContextMenu}
+      />
+
+      {/* Measuring Tool Tooltip */}
+      <MeasuringToolTooltip
+        measuringSelection={measuringSelection}
+        candleData={candleData}
+        selectedTimeframe={selectedTimeframe}
+        onClose={onClearMeasuring}
       />
 
       {/* Interactive Price axis with drag support */}

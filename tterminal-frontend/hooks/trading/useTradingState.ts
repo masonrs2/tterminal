@@ -14,7 +14,8 @@ import type {
   Drawing, 
   ViewportState, 
   ComponentSizes, 
-  DragState 
+  DragState,
+  MeasuringSelection 
 } from '../../types/trading'
 
 // Default values for state (moved outside to prevent recreation)
@@ -121,6 +122,20 @@ export const useTradingState = () => {
   const [selectedDrawingTool, setSelectedDrawingTool] = useState<string | null>(null)
   const [selectedDrawingIndex, setSelectedDrawingIndex] = useState<number | null>(null)
 
+  // Measuring tool state (runtime only)
+  const [measuringSelection, setMeasuringSelection] = useState<MeasuringSelection>({
+    startX: 0,
+    startY: 0,
+    endX: 0,
+    endY: 0,
+    startTimeIndex: 0,
+    endTimeIndex: 0,
+    startPrice: 0,
+    endPrice: 0,
+    isActive: false,
+  })
+  const [isCreatingMeasurement, setIsCreatingMeasurement] = useState(false)
+
   // Theme settings (persisted)
   const [backgroundColor, setBackgroundColor] = useState(persistedThemeState.backgroundColor)
   const [bullCandleColor, setBullCandleColor] = useState(persistedThemeState.bullCandleColor)
@@ -182,7 +197,7 @@ export const useTradingState = () => {
 
   const saveComponentSizes = useDebounce(() => {
     setStoredData(STORAGE_KEYS.COMPONENT_SIZES, componentSizes)
-  }, 100)
+  }, 500) // Increased debounce delay to reduce log spam
 
   const saveDrawingTools = useDebounce(() => {
     setStoredData(STORAGE_KEYS.DRAWING_TOOLS, drawingTools)
@@ -271,10 +286,6 @@ export const useTradingState = () => {
 
   useEffect(() => {
     saveComponentSizes()
-    // Debug logging for component size changes
-    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      console.log('ComponentSizes changed, saving to localStorage:', componentSizes)
-    }
   }, [componentSizes, saveComponentSizes])
 
   useEffect(() => {
@@ -316,6 +327,11 @@ export const useTradingState = () => {
     resetComponentSizes()
     setDrawingTools([])
   }, [resetIndicatorSettings, resetThemeSettings, resetViewportSettings, resetComponentSizes])
+
+  const clearMeasuringSelection = useCallback(() => {
+    setMeasuringSelection(prev => ({ ...prev, isActive: false }))
+    setIsCreatingMeasurement(false)
+  }, [])
 
   return {
     // Hydration state
@@ -363,6 +379,12 @@ export const useTradingState = () => {
     selectedDrawingIndex,
     setSelectedDrawingIndex,
 
+    // Measuring tool
+    measuringSelection,
+    setMeasuringSelection,
+    isCreatingMeasurement,
+    setIsCreatingMeasurement,
+
     // Theme
     backgroundColor,
     setBackgroundColor,
@@ -394,5 +416,6 @@ export const useTradingState = () => {
     resetComponentSizes,
     resetSpecificIndicator,
     resetAllSettings,
+    clearMeasuringSelection,
   }
 } 

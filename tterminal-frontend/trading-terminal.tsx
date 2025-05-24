@@ -200,7 +200,7 @@ export default function TradingTerminal() {
       const latestCandle = candleData[candleData.length - 1]
       state.setCurrentPrice(latestCandle.close)
     }
-  }, [candleData, state])
+  }, [candleData, state.setCurrentPrice])
   
   // Component refs for dropdown management
   const timeframesDropdownRef = useRef<HTMLDivElement>(null)
@@ -214,7 +214,7 @@ export default function TradingTerminal() {
   const liquidationsCanvasRef = useRef<HTMLCanvasElement>(null)
 
   // Chart interactions hook
-  const { handleMouseMove, handleCanvasMouseDown, handleAxisDragEnd, handleWheel } = useChartInteractions({
+  const { handleMouseMove, handleCanvasMouseDown, handleAxisDragEnd, handleMeasuringToolMouseUp, handleWheel } = useChartInteractions({
     canvasRef,
     candleData,
     drawingMode: state.drawingMode,
@@ -222,6 +222,8 @@ export default function TradingTerminal() {
     selectedDrawingIndex: state.selectedDrawingIndex,
     viewportState: state.viewportState,
     dragState: state.dragState,
+    measuringSelection: state.measuringSelection,
+    isCreatingMeasurement: state.isCreatingMeasurement,
     setHoveredCandle: state.setHoveredCandle,
     setMousePosition: state.setMousePosition,
     setDrawingTools: state.setDrawingTools,
@@ -230,6 +232,8 @@ export default function TradingTerminal() {
     setSelectedDrawingTool: state.setSelectedDrawingTool,
     setDragState: state.setDragState,
     setViewportState: state.setViewportState,
+    setMeasuringSelection: state.setMeasuringSelection,
+    setIsCreatingMeasurement: state.setIsCreatingMeasurement,
   })
 
   /**
@@ -238,7 +242,7 @@ export default function TradingTerminal() {
   const handleSelectTimeframe = useCallback((timeframe: string) => {
     state.setSelectedTimeframe(timeframe)
     state.setShowTimeframes(false)
-  }, [state])
+  }, [state.setSelectedTimeframe, state.setShowTimeframes])
 
   const handleToggleIndicator = useCallback((indicator: string) => {
     state.setActiveIndicators(prev =>
@@ -246,27 +250,28 @@ export default function TradingTerminal() {
         ? prev.filter(i => i !== indicator) 
         : [...prev, indicator]
     )
-  }, [state])
+  }, [state.setActiveIndicators])
 
   const handleSelectDrawingTool = useCallback((tool: string) => {
+    console.log('Drawing tool selected:', tool)
     state.setDrawingMode(tool)
     state.setSelectedDrawingTool(tool)
     state.setShowTools(false)
-  }, [state])
+  }, [state.setDrawingMode, state.setSelectedDrawingTool, state.setShowTools])
 
   const handleClearDrawings = useCallback(() => {
     state.setDrawingTools([])
     state.setShowTools(false)
-  }, [state])
+  }, [state.setDrawingTools, state.setShowTools])
 
   const removeIndicator = useCallback((indicator: string) => {
     state.setActiveIndicators(prev => prev.filter(i => i !== indicator))
     state.setOpenSettingsPanel(null)
-  }, [state])
+  }, [state.setActiveIndicators, state.setOpenSettingsPanel])
 
   const openIndicatorSettings = useCallback((indicator: string) => {
     state.setOpenSettingsPanel(state.openSettingsPanel === indicator ? null : indicator)
-  }, [state])
+  }, [state.openSettingsPanel, state.setOpenSettingsPanel])
 
   const updateIndicatorSetting = useCallback((indicator: string, setting: string, value: any) => {
     state.setIndicatorSettings(prev => ({
@@ -276,25 +281,25 @@ export default function TradingTerminal() {
         [setting]: value,
       },
     }))
-  }, [state])
+  }, [state.setIndicatorSettings])
 
   const handleResetIndicator = useCallback((indicator: string) => {
     state.resetSpecificIndicator(indicator)
-  }, [state])
+  }, [state.resetSpecificIndicator])
 
   const handleResetTheme = useCallback(() => {
     state.resetThemeSettings()
-  }, [state])
+  }, [state.resetThemeSettings])
 
   const handleResetAllSettings = useCallback(() => {
     if (confirm('Reset all settings to defaults? This cannot be undone.')) {
       state.resetAllSettings()
     }
-  }, [state])
+  }, [state.resetAllSettings])
 
   const handleResetViewport = useCallback(() => {
     state.resetViewportSettings()
-  }, [state])
+  }, [state.resetViewportSettings])
 
   // Handle canvas mouse movement for drawing rectangles
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -328,14 +333,14 @@ export default function TradingTerminal() {
 
       return prev
     })
-  }, [state.drawingMode, state.drawingTools, state.viewportState, state.setDrawingTools])
+  }, [state.drawingMode, state.drawingTools, state.viewportState.timeZoom, state.viewportState.priceZoom, state.viewportState.timeOffset, state.viewportState.priceOffset, state.setDrawingTools])
 
   const handleCanvasMouseUp = useCallback(() => {
     if (state.drawingMode === "Rectangle") {
       state.setDrawingMode(null)
       state.setSelectedDrawingTool(null)
     }
-  }, [state])
+  }, [state.drawingMode, state.setDrawingMode, state.setSelectedDrawingTool])
 
   // Handle mouse down for chart panning
   const handleChartMouseDown = useCallback((e: React.MouseEvent) => {
@@ -346,7 +351,7 @@ export default function TradingTerminal() {
         dragStart: { x: e.clientX, y: e.clientY }
       }))
     }
-  }, [state])
+  }, [state.setDragState])
 
   // Component resize handlers
   const handleCvdResize = useCallback((e: React.MouseEvent) => {
@@ -356,7 +361,7 @@ export default function TradingTerminal() {
       isDraggingCvd: true,
       dragStart: { x: e.clientX, y: e.clientY }
     }))
-  }, [state])
+  }, [state.setDragState])
 
   const handleLiquidationsResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -365,7 +370,7 @@ export default function TradingTerminal() {
       isDraggingLiquidations: true,
       dragStart: { x: e.clientX, y: e.clientY }
     }))
-  }, [state])
+  }, [state.setDragState])
 
   // Close all settings panels when clicking on chart
   const handleChartClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -388,7 +393,20 @@ export default function TradingTerminal() {
     if (state.showSettings) {
       state.setShowSettings(false)
     }
-  }, [state])
+  }, [
+    state.showChartSettings, 
+    state.setShowChartSettings,
+    state.openSettingsPanel,
+    state.setOpenSettingsPanel,
+    state.showIndicators,
+    state.setShowIndicators,
+    state.showTools,
+    state.setShowTools,
+    state.showTimeframes,
+    state.setShowTimeframes,
+    state.showSettings,
+    state.setShowSettings
+  ])
 
   // Combined mouse down handler
   const handleCombinedMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -400,8 +418,8 @@ export default function TradingTerminal() {
   // Global drag handlers
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      // Don't interfere with axis dragging - let the hook handle it
-      if (state.dragState.isDraggingPrice || state.dragState.isDraggingTime) {
+      // Don't interfere with axis dragging or measuring tool - let the hook handle it
+      if (state.dragState.isDraggingPrice || state.dragState.isDraggingTime || state.isCreatingMeasurement) {
         return
       }
 
@@ -449,10 +467,16 @@ export default function TradingTerminal() {
     }
 
     const handleMouseUp = () => {
-      handleAxisDragEnd()
+      // Handle measuring tool mouse up separately
+      if (state.isCreatingMeasurement) {
+        handleMeasuringToolMouseUp()
+      } else {
+        handleAxisDragEnd()
+      }
     }
 
-    if (state.dragState.isDraggingChart || state.dragState.isDraggingPrice || state.dragState.isDraggingTime || state.dragState.isDraggingCvd || state.dragState.isDraggingLiquidations) {
+    if (state.dragState.isDraggingChart || state.dragState.isDraggingPrice || state.dragState.isDraggingTime || state.dragState.isDraggingCvd || state.dragState.isDraggingLiquidations || state.isCreatingMeasurement) {
+      console.log('Attaching global mouse handlers', { isCreatingMeasurement: state.isCreatingMeasurement })
       document.addEventListener("mousemove", handleMouseMove)
       document.addEventListener("mouseup", handleMouseUp)
     }
@@ -461,7 +485,20 @@ export default function TradingTerminal() {
       document.removeEventListener("mousemove", handleMouseMove)
       document.removeEventListener("mouseup", handleMouseUp)
     }
-  }, [state.dragState, state.setViewportState, state.setDragState, state.setComponentSizes])
+  }, [
+    state.dragState.isDraggingChart, 
+    state.dragState.isDraggingPrice, 
+    state.dragState.isDraggingTime, 
+    state.dragState.isDraggingCvd, 
+    state.dragState.isDraggingLiquidations,
+    state.dragState.dragStart,
+    state.isCreatingMeasurement, 
+    state.setViewportState, 
+    state.setDragState, 
+    state.setComponentSizes, 
+    handleMeasuringToolMouseUp, 
+    handleAxisDragEnd
+  ])
 
   // Setup wheel event for ultra-fast zooming
   useEffect(() => {
@@ -504,7 +541,20 @@ export default function TradingTerminal() {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [state])
+  }, [
+    state.showTimeframes,
+    state.showIndicators, 
+    state.showTools,
+    state.showSettings,
+    state.showChartSettings,
+    state.openSettingsPanel,
+    state.setShowTimeframes,
+    state.setShowIndicators,
+    state.setShowTools,
+    state.setShowSettings,
+    state.setShowChartSettings,
+    state.setOpenSettingsPanel
+  ])
 
   // Draw CVD chart with extended crosshair
   useEffect(() => {
@@ -1227,6 +1277,7 @@ export default function TradingTerminal() {
             bearCandleColor={state.bearCandleColor}
             indicatorSettings={state.indicatorSettings}
             showOrderbook={state.showOrderbook}
+            measuringSelection={state.measuringSelection}
             canvasRef={canvasRef}
             onMouseMove={handleMouseMove}
             onMouseDown={handleCombinedMouseDown}
@@ -1238,6 +1289,7 @@ export default function TradingTerminal() {
             onMouseMoveCapture={handleCanvasMouseMove}
             onContextMenu={(e) => e.preventDefault()}
             onAxisWheel={handlePriceAxisWheel}
+            onClearMeasuring={state.clearMeasuringSelection}
           />
 
           {/* CVD Chart with resize handle */}
