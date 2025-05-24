@@ -39,6 +39,7 @@ interface MainChartProps {
   onMouseLeave: () => void
   onMouseMoveCapture: (event: React.MouseEvent<HTMLCanvasElement>) => void
   onContextMenu: (event: React.MouseEvent<HTMLCanvasElement>) => void
+  onAxisWheel?: (axisType: 'price', deltaY: number) => void
   className?: string
 }
 
@@ -66,6 +67,7 @@ export const MainChart: React.FC<MainChartProps> = ({
   onMouseLeave,
   onMouseMoveCapture,
   onContextMenu,
+  onAxisWheel,
   className = ""
 }) => {
 
@@ -106,12 +108,25 @@ export const MainChart: React.FC<MainChartProps> = ({
       currentTarget: canvasElement,
       target: canvasElement,
       clientX: canvasRect.left + relativeX,
-      clientY: canvasRect.top + relativeY
+      clientY: canvasRect.top + relativeY,
+      preventDefault: e.preventDefault.bind(e),
+      stopPropagation: e.stopPropagation.bind(e)
     } as React.MouseEvent<HTMLCanvasElement>
     
     onMouseDown(mockCanvasEvent)
     e.stopPropagation()
   }, [onMouseDown, canvasRef])
+
+  // Dedicated axis wheel handler for ultra-fast price zooming
+  const handleAxisWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    // Pass wheel event to parent for ultra-fast zooming
+    if (onAxisWheel) {
+      onAxisWheel('price', e.deltaY)
+    }
+  }, [onAxisWheel])
 
   /**
    * Main chart rendering effect
@@ -371,7 +386,8 @@ export const MainChart: React.FC<MainChartProps> = ({
         onMouseMove={handleAxisMouseMove}
         onMouseDown={handleAxisMouseDown}
         onMouseUp={onMouseUp}
-        title="Drag vertically to zoom price axis"
+                  onWheel={handleAxisWheel}
+          title="Drag or scroll to zoom price axis vertically"
       >
         <div className="flex flex-col justify-between h-full py-2 text-xs">
           <div className="text-right pr-2">111000.0</div>

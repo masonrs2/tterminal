@@ -53,24 +53,14 @@ export const useChartInteractions = ({
     const chartWidth = rect.width - priceAxisWidth
     const chartHeight = rect.height - timeAxisHeight
     
-    // Check if in price axis zone (right edge)
-    if (x >= chartWidth && x <= rect.width) {
+    // Check if in price axis zone (right edge) - expanded detection zone
+    if (x >= chartWidth - 10 && x <= rect.width + 100) {
       return 'price-axis'
     }
     
-    // Check if in time axis zone (bottom edge)  
-    if (y >= chartHeight && y <= rect.height) {
+    // Check if in time axis zone (bottom edge) - expanded detection zone
+    if (y >= chartHeight - 10 && y <= rect.height + 100) {
       return 'time-axis'
-    }
-    
-    // Check if near price axis edge (for drag detection)
-    if (x >= chartWidth - 15 && x <= chartWidth + 15) {
-      return 'price-axis-edge'
-    }
-    
-    // Check if near time axis edge (for drag detection)
-    if (y >= chartHeight - 15 && y <= chartHeight + 15) {
-      return 'time-axis-edge'
     }
     
     return 'chart'
@@ -126,9 +116,9 @@ export const useChartInteractions = ({
 
       // Detect axis zones and update cursor
       const axisZone = getAxisZone(x, y, canvas)
-      if (axisZone === 'price-axis' || axisZone === 'price-axis-edge') {
+      if (axisZone === 'price-axis') {
         canvas.style.cursor = 'ns-resize'
-      } else if (axisZone === 'time-axis' || axisZone === 'time-axis-edge') {
+      } else if (axisZone === 'time-axis') {
         canvas.style.cursor = 'ew-resize'
       } else {
         canvas.style.cursor = 'move'
@@ -168,7 +158,7 @@ export const useChartInteractions = ({
     // Check for axis dragging first - this takes priority
     const axisZone = getAxisZone(x, y, canvas)
     
-    if (axisZone === 'price-axis' || axisZone === 'price-axis-edge') {
+    if (axisZone === 'price-axis') {
       setDragState(prev => ({
         ...prev,
         isDraggingPrice: true,
@@ -179,7 +169,7 @@ export const useChartInteractions = ({
       return
     }
     
-    if (axisZone === 'time-axis' || axisZone === 'time-axis-edge') {
+    if (axisZone === 'time-axis') {
       setDragState(prev => ({
         ...prev,
         isDraggingTime: true,
@@ -351,13 +341,13 @@ export const useChartInteractions = ({
       : Math.min(3.0, 1 + wheelSensitivity * 0.5)  // Ultra-fast zoom in
 
     // Axis-specific zooming
-    if (axisZone === 'price-axis' || axisZone === 'price-axis-edge' || e.ctrlKey || e.metaKey) {
+    if (axisZone === 'price-axis' || e.ctrlKey || e.metaKey) {
       // Price zoom (vertical) - ultra responsive
       setViewportState(prev => ({
         ...prev,
         priceZoom: Math.max(0.05, Math.min(50, prev.priceZoom * dynamicZoomFactor))
       }))
-    } else if (axisZone === 'time-axis' || axisZone === 'time-axis-edge') {
+    } else if (axisZone === 'time-axis') {
       // Time zoom (horizontal) - ultra responsive  
       setViewportState(prev => ({
         ...prev,

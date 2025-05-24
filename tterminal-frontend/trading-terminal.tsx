@@ -461,52 +461,96 @@ export default function TradingTerminal() {
 
   // Dedicated axis mouse handlers to prevent conflicts with canvas
   const handleAxisMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Convert div event to canvas-like coordinates for axis detection
+    // For time axis div, force time axis detection by using coordinates that will trigger time-axis zone
     const canvasElement = canvasRef.current
     if (!canvasElement) return
 
     const canvasRect = canvasElement.getBoundingClientRect()
-    const divRect = e.currentTarget.getBoundingClientRect()
     
-    // Calculate relative position as if it were on the canvas
-    const relativeX = divRect.left - canvasRect.left + (e.clientX - divRect.left)
-    const relativeY = divRect.top - canvasRect.top + (e.clientY - divRect.top)
+    // Force coordinates that will be detected as time-axis (bottom area of canvas)
+    const mockX = e.clientX - canvasRect.left  // Use actual X position
+    const mockY = canvasRect.height - 15       // Force Y to be in time axis zone
     
     // Create a canvas-like event for the hook
     const mockCanvasEvent = {
       ...e,
       currentTarget: canvasElement,
       target: canvasElement,
-      clientX: canvasRect.left + relativeX,
-      clientY: canvasRect.top + relativeY
+      clientX: canvasRect.left + mockX,
+      clientY: canvasRect.top + mockY,
+      preventDefault: e.preventDefault.bind(e),
+      stopPropagation: e.stopPropagation.bind(e)
     } as React.MouseEvent<HTMLCanvasElement>
     
     handleMouseMove(mockCanvasEvent)
   }, [handleMouseMove])
 
   const handleAxisMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Convert div event to canvas-like coordinates
+    // For time axis div, force time axis detection by using coordinates that will trigger time-axis zone
     const canvasElement = canvasRef.current
     if (!canvasElement) return
 
     const canvasRect = canvasElement.getBoundingClientRect()
-    const divRect = e.currentTarget.getBoundingClientRect()
     
-    const relativeX = divRect.left - canvasRect.left + (e.clientX - divRect.left)
-    const relativeY = divRect.top - canvasRect.top + (e.clientY - divRect.top)
+    // Force coordinates that will be detected as time-axis (bottom area of canvas)
+    const mockX = e.clientX - canvasRect.left  // Use actual X position
+    const mockY = canvasRect.height - 15       // Force Y to be in time axis zone
     
     const mockCanvasEvent = {
       ...e,
       currentTarget: canvasElement,
       target: canvasElement,
-      clientX: canvasRect.left + relativeX,
-      clientY: canvasRect.top + relativeY
+      clientX: canvasRect.left + mockX,
+      clientY: canvasRect.top + mockY,
+      preventDefault: e.preventDefault.bind(e),
+      stopPropagation: e.stopPropagation.bind(e)
     } as React.MouseEvent<HTMLCanvasElement>
     
     // Only call the axis-specific mouse down handler
     handleCanvasMouseDown(mockCanvasEvent)
     e.stopPropagation()
   }, [handleCanvasMouseDown])
+
+  // Dedicated axis wheel handler for ultra-fast zooming
+  const handleAxisWheel = useCallback((e: React.WheelEvent<HTMLDivElement>, axisType: 'time' | 'price') => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    // Ultra-aggressive zoom factors for THE FASTEST response
+    const wheelSensitivity = Math.abs(e.deltaY) / 30 // Even more sensitive
+    const dynamicZoomFactor = e.deltaY > 0 
+      ? Math.max(0.2, 1 - wheelSensitivity * 0.6)  // Ultra-fast zoom out
+      : Math.min(4.0, 1 + wheelSensitivity * 0.8)  // Ultra-fast zoom in
+
+    if (axisType === 'price') {
+      // Vertical zoom (price axis)
+      state.setViewportState(prev => ({
+        ...prev,
+        priceZoom: Math.max(0.01, Math.min(100, prev.priceZoom * dynamicZoomFactor))
+      }))
+    } else {
+      // Horizontal zoom (time axis)  
+      state.setViewportState(prev => ({
+        ...prev,
+        timeZoom: Math.max(0.01, Math.min(100, prev.timeZoom * dynamicZoomFactor))
+      }))
+    }
+  }, [state])
+
+  // Price axis wheel handler for MainChart
+  const handlePriceAxisWheel = useCallback((axisType: 'price', deltaY: number) => {
+    // Ultra-aggressive zoom factors for THE FASTEST response
+    const wheelSensitivity = Math.abs(deltaY) / 30 // Even more sensitive
+    const dynamicZoomFactor = deltaY > 0 
+      ? Math.max(0.2, 1 - wheelSensitivity * 0.6)  // Ultra-fast zoom out
+      : Math.min(4.0, 1 + wheelSensitivity * 0.8)  // Ultra-fast zoom in
+
+    // Vertical zoom (price axis)
+    state.setViewportState(prev => ({
+      ...prev,
+      priceZoom: Math.max(0.01, Math.min(100, prev.priceZoom * dynamicZoomFactor))
+    }))
+  }, [state])
 
   const chartAreaWidth = state.showOrderbook ? `calc(100% - ${state.componentSizes.orderbookWidth}px)` : "100%"
 
@@ -812,6 +856,7 @@ export default function TradingTerminal() {
             }}
             onMouseMoveCapture={handleCanvasMouseMove}
             onContextMenu={(e) => e.preventDefault()}
+            onAxisWheel={handlePriceAxisWheel}
           />
 
           {/* CVD Chart with resize handle */}
@@ -881,7 +926,8 @@ export default function TradingTerminal() {
             onMouseMove={handleAxisMouseMove}
             onMouseDown={handleAxisMouseDown}
             onMouseUp={handleCanvasMouseUp}
-            title="Drag horizontally to zoom time axis"
+            onWheel={(e) => handleAxisWheel(e, 'time')}
+            title="Drag or scroll to zoom time axis horizontally"
           >
             <span>00:00</span>
             <span>00:00</span>
