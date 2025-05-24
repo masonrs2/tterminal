@@ -148,6 +148,12 @@ export const MainChart: React.FC<MainChartProps> = ({
     ctx.fillStyle = backgroundColor
     ctx.fillRect(0, 0, canvas.offsetWidth, canvas.offsetHeight)
 
+    // Calculate dynamic price range from data
+    const priceMax = Math.max(...candleData.map(c => c.high))
+    const priceMin = Math.min(...candleData.map(c => c.low))
+    const priceRange = priceMax - priceMin
+    const chartHeight = canvas.offsetHeight - 100
+
     // Draw grid
     ctx.strokeStyle = "#333333"
     ctx.lineWidth = 0.5
@@ -186,19 +192,18 @@ export const MainChart: React.FC<MainChartProps> = ({
       ctx.fillRect(x, canvas.offsetHeight - volumeHeight, 8 * viewportState.timeZoom, buyHeight)
     })
 
-    // Draw heatmap overlay
+    // Draw heatmap overlay (without text clutter)
     if (activeIndicators.includes("Heatmap")) {
       heatmapData.forEach((point) => {
         const x = point.x * spacing + 50 - viewportState.timeOffset
-        const y = point.y * 30 + 100
+        const y = 50 + (point.y / 20) * chartHeight * 0.8 // Dynamic positioning based on chart height
         const intensity = Math.min(point.intensity / 200, 1)
 
-        ctx.fillStyle = `rgba(138, 43, 226, ${intensity * indicatorSettings.heatmap.intensity})`
-        ctx.fillRect(x - 20, y - 15, 40, 30)
-
-        ctx.fillStyle = "#ffffff"
-        ctx.font = "10px monospace"
-        ctx.fillText(point.intensity.toFixed(3), x - 15, y)
+        // Only draw if visible on screen
+        if (x >= -40 && x <= canvas.offsetWidth + 40) {
+          ctx.fillStyle = `rgba(138, 43, 226, ${intensity * indicatorSettings.heatmap.intensity})`
+          ctx.fillRect(x - 15, y - 10, 30, 20)
+        }
       })
     }
 
@@ -210,7 +215,7 @@ export const MainChart: React.FC<MainChartProps> = ({
       const startX = chartWidth - profileWidth - 20
 
       volumeProfile.forEach((profile) => {
-        const y = 100 + (113000 - profile.price) * 0.01 * viewportState.priceZoom - viewportState.priceOffset
+        const y = 50 + ((priceMax - profile.price) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
         const width = (profile.volume / maxVolume) * profileWidth
 
         if (indicatorSettings.vpvr.deltaMode) {
@@ -228,33 +233,39 @@ export const MainChart: React.FC<MainChartProps> = ({
       })
     }
 
-    // Draw support/resistance lines
+    // Draw support/resistance lines (cleaned up, no text labels)
     ctx.strokeStyle = "#4a90e2"
     ctx.lineWidth = 1
+    ctx.setLineDash([])
+    
+    // Only draw if within reasonable bounds
+    const supportLevel = 50 + (chartHeight * 0.7)
+    const resistanceLevel = 50 + (chartHeight * 0.3)
+    
     ctx.beginPath()
-    ctx.moveTo(0, 200 * viewportState.priceZoom)
-    ctx.lineTo(canvas.offsetWidth - 200, 200 * viewportState.priceZoom)
+    ctx.moveTo(0, supportLevel)
+    ctx.lineTo(canvas.offsetWidth - 80, supportLevel)
     ctx.stroke()
 
     ctx.strokeStyle = "#666666"
     ctx.setLineDash([5, 5])
     ctx.beginPath()
-    ctx.moveTo(0, 150 * viewportState.priceZoom)
-    ctx.lineTo(canvas.offsetWidth - 200, 150 * viewportState.priceZoom)
+    ctx.moveTo(0, resistanceLevel)
+    ctx.lineTo(canvas.offsetWidth - 80, resistanceLevel)
     ctx.stroke()
     ctx.setLineDash([])
 
-    // Draw candlesticks
+    // Draw candlesticks with dynamic price scaling
     const candleWidth = 8 * viewportState.timeZoom
     candleData.forEach((candle, index) => {
       const x = index * spacing + 50 - viewportState.timeOffset
       if (x < -candleWidth || x > canvas.offsetWidth) return
 
-      const priceScale = 0.01 * viewportState.priceZoom
-      const high = 100 + (113000 - candle.high) * priceScale - viewportState.priceOffset
-      const low = 100 + (113000 - candle.low) * priceScale - viewportState.priceOffset
-      const open = 100 + (113000 - candle.open) * priceScale - viewportState.priceOffset
-      const close = 100 + (113000 - candle.close) * priceScale - viewportState.priceOffset
+      // Dynamic price scaling based on actual data range
+      const high = 50 + ((priceMax - candle.high) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const low = 50 + ((priceMax - candle.low) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const open = 50 + ((priceMax - candle.open) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const close = 50 + ((priceMax - candle.close) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
 
       // Highlight hovered candle
       if (hoveredCandle && hoveredCandle.timestamp === candle.timestamp) {
@@ -277,11 +288,11 @@ export const MainChart: React.FC<MainChartProps> = ({
       ctx.fillRect(x, bodyTop, candleWidth, bodyHeight)
     })
 
-    // Draw current price line
+    // Draw current price line with dynamic scaling
     ctx.strokeStyle = "#ffff00"
     ctx.lineWidth = 1
     ctx.setLineDash([3, 3])
-    const currentY = 100 + (113000 - currentPrice) * 0.01 * viewportState.priceZoom - viewportState.priceOffset
+    const currentY = 50 + ((priceMax - currentPrice) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
     ctx.beginPath()
     ctx.moveTo(0, currentY)
     ctx.lineTo(canvas.offsetWidth - 200, currentY)
@@ -308,13 +319,13 @@ export const MainChart: React.FC<MainChartProps> = ({
 
       ctx.setLineDash([])
 
-      // Price label
-      if (mousePosition.price) {
+      // Price label (cleaned up and only shown on hover)
+      if (mousePosition.price && mousePosition.x > canvas.offsetWidth - 100) {
         ctx.fillStyle = "#ffffff"
-        ctx.fillRect(canvas.offsetWidth - 200, mousePosition.y - 10, 80, 20)
+        ctx.fillRect(canvas.offsetWidth - 80, mousePosition.y - 10, 75, 20)
         ctx.fillStyle = "#000000"
-        ctx.font = "12px monospace"
-        ctx.fillText(mousePosition.price.toFixed(1), canvas.offsetWidth - 195, mousePosition.y + 5)
+        ctx.font = "10px monospace"
+        ctx.fillText(mousePosition.price.toFixed(1), canvas.offsetWidth - 77, mousePosition.y + 3)
       }
     }
 
@@ -326,9 +337,9 @@ export const MainChart: React.FC<MainChartProps> = ({
       ctx.beginPath()
 
       const x1 = drawing.time1 * spacing + 50 - viewportState.timeOffset
-      const y1 = 100 + (113000 - drawing.price1) * 0.01 * viewportState.priceZoom - viewportState.priceOffset
+      const y1 = 50 + ((priceMax - drawing.price1) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
       const x2 = drawing.time2 * spacing + 50 - viewportState.timeOffset
-      const y2 = 100 + (113000 - drawing.price2) * 0.01 * viewportState.priceZoom - viewportState.priceOffset
+      const y2 = 50 + ((priceMax - drawing.price2) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
 
       if (drawing.type === "Horizontal Ray") {
         ctx.moveTo(0, y1)
@@ -390,17 +401,23 @@ export const MainChart: React.FC<MainChartProps> = ({
           title="Drag or scroll to zoom price axis vertically"
       >
         <div className="flex flex-col justify-between h-full py-2 text-xs">
-          <div className="text-right pr-2">111000.0</div>
-          <div className="text-right pr-2">110000.0</div>
-          <div className="text-right pr-2">109000.0</div>
-          <div className="text-right pr-2 bg-red-600 text-white px-1 rounded">108000.0</div>
-          <div className="text-right pr-2 bg-blue-500 text-white px-1 rounded">{currentPrice.toFixed(1)}</div>
+          {(() => {
+            const priceMax = Math.max(...candleData.map(c => c.high))
+            const priceMin = Math.min(...candleData.map(c => c.low))
+            const priceStep = (priceMax - priceMin) / 8
+            return Array.from({ length: 9 }, (_, i) => {
+              const price = priceMax - (i * priceStep)
+              const isCurrentPrice = Math.abs(price - currentPrice) < priceStep / 2
+              return (
+                <div key={i} className={`text-right pr-2 ${isCurrentPrice ? 'bg-blue-500 text-white px-1 rounded' : ''}`}>
+                  {price.toFixed(1)}
+                </div>
+              )
+            })
+          })()}
           <div className="text-right pr-2 bg-red-600 text-white px-1 rounded text-xs" style={{ marginTop: "2px" }} suppressHydrationWarning={true}>
             {getTimeRemaining(selectedTimeframe)}
           </div>
-          <div className="text-right pr-2">107000.0</div>
-          <div className="text-right pr-2">106000.0</div>
-          <div className="text-right pr-2">105000.0</div>
         </div>
       </div>
     </div>

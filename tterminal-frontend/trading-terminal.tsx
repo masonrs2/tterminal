@@ -29,63 +29,119 @@ import { MainChart } from './components/trading-terminal/charts/MainChart'
 import HighPerformanceOrderbook from './components/orderbook'
 import type { CandleData, VolumeProfileEntry, HeatmapData } from './types/trading'
 
-// Sample data - In production, this would come from props or API
-const candleData: CandleData[] = [
-  { timestamp: Date.now() - 3600000 * 30, open: 111121, high: 111348, low: 111111, close: 111282, volume: 633 },
-  { timestamp: Date.now() - 3600000 * 29, open: 111282, high: 111400, low: 111200, close: 111350, volume: 720 },
-  { timestamp: Date.now() - 3600000 * 28, open: 111350, high: 111500, low: 111250, close: 111450, volume: 850 },
-  { timestamp: Date.now() - 3600000 * 27, open: 111450, high: 111600, low: 111350, close: 111550, volume: 980 },
-  { timestamp: Date.now() - 3600000 * 26, open: 111550, high: 111700, low: 111450, close: 111650, volume: 1020 },
-  { timestamp: Date.now() - 3600000 * 25, open: 111650, high: 111800, low: 111550, close: 111750, volume: 890 },
-  { timestamp: Date.now() - 3600000 * 24, open: 111750, high: 111900, low: 111650, close: 111850, volume: 1110 },
-  { timestamp: Date.now() - 3600000 * 23, open: 111850, high: 112000, low: 111750, close: 111950, volume: 1240 },
-  { timestamp: Date.now() - 3600000 * 22, open: 111950, high: 112100, low: 111850, close: 112050, volume: 1080 },
-  { timestamp: Date.now() - 3600000 * 21, open: 112050, high: 112200, low: 111950, close: 112150, volume: 920 },
-  { timestamp: Date.now() - 3600000 * 20, open: 112150, high: 112300, low: 112050, close: 112250, volume: 1170 },
-  { timestamp: Date.now() - 3600000 * 19, open: 112250, high: 112400, low: 112150, close: 112350, volume: 1010 },
-  { timestamp: Date.now() - 3600000 * 18, open: 112350, high: 112500, low: 112250, close: 112450, volume: 950 },
-  { timestamp: Date.now() - 3600000 * 17, open: 112450, high: 112600, low: 112350, close: 112550, volume: 880 },
-  { timestamp: Date.now() - 3600000 * 16, open: 112550, high: 112700, low: 112450, close: 112650, volume: 1120 },
-  { timestamp: Date.now() - 3600000 * 15, open: 112650, high: 112500, low: 112100, close: 112200, volume: 1750 },
-  { timestamp: Date.now() - 3600000 * 14, open: 112200, high: 112250, low: 111800, close: 111900, volume: 1590 },
-  { timestamp: Date.now() - 3600000 * 13, open: 111900, high: 112000, low: 111600, close: 111700, volume: 1450 },
-  { timestamp: Date.now() - 3600000 * 12, open: 111700, high: 111800, low: 111400, close: 111500, volume: 1620 },
-  { timestamp: Date.now() - 3600000 * 11, open: 111500, high: 111600, low: 111200, close: 111300, volume: 1580 },
-  { timestamp: Date.now() - 3600000 * 10, open: 111300, high: 111400, low: 111000, close: 111100, volume: 1800 },
-  { timestamp: Date.now() - 3600000 * 9, open: 111100, high: 111200, low: 110900, close: 107674, volume: 1550 },
-]
+// Generate realistic historical trading data (500 candles)
+const generateRealisticCandleData = (): CandleData[] => {
+  const candles: CandleData[] = []
+  const baseTime = Date.now() - 3600000 * 500 // 500 hours ago
+  let currentPrice = 108000 // Starting price
+  
+  for (let i = 0; i < 500; i++) {
+    const timestamp = baseTime + i * 3600000 // Hourly candles
+    
+    // Realistic price movement with trends and volatility
+    const trend = Math.sin(i / 50) * 0.002 // Long-term trend
+    const noise = (Math.random() - 0.5) * 0.008 // Random volatility
+    const momentum = (Math.random() - 0.5) * 0.004 // Momentum component
+    
+    const priceChange = trend + noise + momentum
+    currentPrice *= (1 + priceChange)
+    
+    // Generate OHLC with realistic wicks
+    const open = currentPrice
+    const volatility = 0.015 + Math.random() * 0.01 // 1.5-2.5% volatility
+    const high = open * (1 + Math.random() * volatility)
+    const low = open * (1 - Math.random() * volatility)
+    
+    // Close price tends to stay within range but can break out
+    const closeDirection = Math.random() - 0.5
+    const close = open + (closeDirection * (high - low) * 0.7)
+    currentPrice = Math.max(low, Math.min(high, close))
+    
+    // Realistic volume with higher volume on big moves
+    const priceMovement = Math.abs(close - open) / open
+    const baseVolume = 800 + Math.random() * 400
+    const volumeMultiplier = 1 + (priceMovement * 5) // Higher volume on big moves
+    const volume = Math.floor(baseVolume * volumeMultiplier)
+    
+    candles.push({
+      timestamp,
+      open: Math.round(open * 100) / 100,
+      high: Math.round(high * 100) / 100,
+      low: Math.round(low * 100) / 100,
+      close: Math.round(close * 100) / 100,
+      volume
+    })
+  }
+  
+  return candles
+}
 
-const volumeProfile: VolumeProfileEntry[] = [
-  { price: 112700, volume: 450, type: "sell" },
-  { price: 112600, volume: 680, type: "buy" },
-  { price: 112500, volume: 890, type: "sell" },
-  { price: 112400, volume: 1200, type: "buy" },
-  { price: 112300, volume: 1450, type: "sell" },
-  { price: 112200, volume: 1680, type: "buy" },
-  { price: 112100, volume: 1320, type: "sell" },
-  { price: 112000, volume: 980, type: "buy" },
-  { price: 111900, volume: 1150, type: "sell" },
-  { price: 111800, volume: 890, type: "buy" },
-  { price: 111700, volume: 760, type: "sell" },
-  { price: 111600, volume: 650, type: "buy" },
-  { price: 111500, volume: 540, type: "sell" },
-  { price: 111400, volume: 430, type: "buy" },
-  { price: 111300, volume: 320, type: "sell" },
-  { price: 111200, volume: 280, type: "buy" },
-  { price: 111100, volume: 350, type: "sell" },
-  { price: 111000, volume: 420, type: "buy" },
-  { price: 110900, volume: 380, type: "sell" },
-  { price: 110800, volume: 290, type: "buy" },
-]
+const candleData: CandleData[] = generateRealisticCandleData()
 
-const heatmapData: HeatmapData[] = [
-  { x: 15, y: 8, intensity: 126.968 },
-  { x: 16, y: 8, intensity: 166.838 },
-  { x: 15, y: 9, intensity: 19.822 },
-  { x: 16, y: 9, intensity: 45.155 },
-  { x: 15, y: 10, intensity: 32.946 },
-  { x: 16, y: 10, intensity: 84.027 },
-]
+// Generate realistic volume profile based on price levels
+const generateVolumeProfile = (): VolumeProfileEntry[] => {
+  const profile: VolumeProfileEntry[] = []
+  const priceMin = Math.min(...candleData.map(c => c.low))
+  const priceMax = Math.max(...candleData.map(c => c.high))
+  const priceStep = (priceMax - priceMin) / 100 // 100 price levels
+  
+  for (let i = 0; i < 100; i++) {
+    const price = priceMin + (i * priceStep)
+    
+    // Calculate how much volume occurred at this price level
+    let totalVolume = 0
+    candleData.forEach(candle => {
+      if (price >= candle.low && price <= candle.high) {
+        // More volume near the close price, less at extremes
+        const pricePosition = (price - candle.low) / (candle.high - candle.low)
+        const closeness = 1 - Math.abs(pricePosition - 0.5) * 2
+        totalVolume += candle.volume * closeness * 0.1
+      }
+    })
+    
+    if (totalVolume > 50) { // Only include significant levels
+      const type = Math.random() > 0.5 ? "buy" : "sell"
+      profile.push({
+        price: Math.round(price * 100) / 100,
+        volume: Math.floor(totalVolume),
+        type
+      })
+    }
+  }
+  
+  return profile.sort((a, b) => b.price - a.price) // Sort by price descending
+}
+
+const volumeProfile: VolumeProfileEntry[] = generateVolumeProfile()
+
+// Generate realistic heatmap data across the chart
+const generateHeatmapData = (): HeatmapData[] => {
+  const heatmap: HeatmapData[] = []
+  
+  // Generate heatmap points for significant price/time areas
+  for (let timeIndex = 50; timeIndex < candleData.length - 50; timeIndex += 10) {
+    for (let priceLevel = 0; priceLevel < 20; priceLevel++) {
+      if (Math.random() > 0.7) { // 30% chance of heatmap point
+        const candle = candleData[timeIndex]
+        const priceRange = candle.high - candle.low
+        const baseIntensity = candle.volume / 1000
+        
+        // Higher intensity around high volume areas
+        const intensity = baseIntensity * (0.5 + Math.random() * 1.5)
+        
+        heatmap.push({
+          x: timeIndex,
+          y: priceLevel,
+          intensity: Math.round(intensity * 100) / 100
+        })
+      }
+    }
+  }
+  
+  return heatmap
+}
+
+const heatmapData: HeatmapData[] = generateHeatmapData()
 
 const orderbook = {
   asks: [
@@ -117,6 +173,14 @@ const orderbook = {
 export default function TradingTerminal() {
   // Centralized state management
   const state = useTradingState()
+  
+  // Set current price to the latest candle's close price
+  React.useEffect(() => {
+    if (candleData.length > 0) {
+      const latestCandle = candleData[candleData.length - 1]
+      state.setCurrentPrice(latestCandle.close)
+    }
+  }, [candleData, state])
   
   // Component refs for dropdown management
   const timeframesDropdownRef = useRef<HTMLDivElement>(null)
@@ -391,16 +455,27 @@ export default function TradingTerminal() {
     ctx.fillStyle = state.backgroundColor
     ctx.fillRect(0, 0, canvas.offsetWidth, canvas.offsetHeight)
 
-    // Draw CVD line with custom settings
+    // Draw CVD line with realistic scaling
     ctx.strokeStyle = state.indicatorSettings.cvd.lineColor
     ctx.lineWidth = state.indicatorSettings.cvd.lineWidth
     ctx.beginPath()
     let cvdValue = 0
     const spacing = 12 * state.viewportState.timeZoom
+    const maxVolume = Math.max(...candleData.map(c => c.volume))
+    
     candleData.forEach((candle, index) => {
-      cvdValue += (candle.close > candle.open ? 1 : -1) * candle.volume
+      // More realistic CVD calculation with proper buy/sell ratio
+      const isBullish = candle.close > candle.open
+      const priceMove = Math.abs(candle.close - candle.open) / candle.open
+      const volumeWeight = isBullish ? 1 + priceMove * 2 : -(1 + priceMove * 2)
+      
+      cvdValue += volumeWeight * candle.volume
       const x = index * spacing + 50 - state.viewportState.timeOffset
-      const y = canvas.offsetHeight / 2 + (cvdValue / 10000) * 20
+      
+      // Scale CVD to fit chart height properly
+      const cvdRange = maxVolume * candleData.length * 0.1 // Estimated range
+      const y = canvas.offsetHeight / 2 + (cvdValue / cvdRange) * (canvas.offsetHeight * 0.4)
+      
       if (index === 0) ctx.moveTo(x, y)
       else ctx.lineTo(x, y)
     })
@@ -434,16 +509,30 @@ export default function TradingTerminal() {
     ctx.fillStyle = state.backgroundColor
     ctx.fillRect(0, 0, canvas.offsetWidth, canvas.offsetHeight)
 
-    // Draw liquidation bars with custom settings
-    const liquidations = [5, 12, 3, 8, 15, 2, 7, 20, 4, 9, 6, 14, 8, 11, 3, 18, 7, 13, 5, 10, 16, 4]
+    // Generate realistic liquidation data based on price movements and volume
     const spacing = 12 * state.viewportState.timeZoom
-    liquidations.forEach((liq, index) => {
+    candleData.forEach((candle, index) => {
       const x = index * spacing + 50 - state.viewportState.timeOffset
       if (x < -8 || x > canvas.offsetWidth) return
 
-      const height = (liq / 25) * canvas.offsetHeight
-      ctx.fillStyle = liq > state.indicatorSettings.liquidations.threshold ? state.indicatorSettings.liquidations.color : "#00ff88"
-      ctx.fillRect(x, canvas.offsetHeight - height, 8 * state.viewportState.timeZoom, height)
+      // Calculate liquidation intensity based on price volatility and volume
+      const priceMove = Math.abs(candle.close - candle.open) / candle.open
+      const volumeIntensity = candle.volume / 1000 // More sensitive volume normalization
+      const wickSize = (candle.high - candle.low) / candle.close
+      
+      // Base liquidation intensity - more generous calculation
+      const baseIntensity = priceMove * 200 + volumeIntensity * 0.8 + wickSize * 30
+      const randomFactor = 0.3 + Math.random() * 0.7 // 30-100% random factor
+      const liquidationIntensity = baseIntensity * randomFactor
+      const clampedIntensity = Math.min(liquidationIntensity, 25)
+      
+      // Show more liquidations - lower threshold
+      if (clampedIntensity > 0.3) {
+        const height = Math.max(2, (clampedIntensity / 25) * canvas.offsetHeight)
+        const isHighLiquidation = clampedIntensity > state.indicatorSettings.liquidations.threshold
+        ctx.fillStyle = isHighLiquidation ? state.indicatorSettings.liquidations.color : "#00ff88"
+        ctx.fillRect(x, canvas.offsetHeight - height, Math.max(4, 8 * state.viewportState.timeZoom), height)
+      }
     })
 
     // Draw crosshair vertical line
@@ -457,7 +546,7 @@ export default function TradingTerminal() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [state.viewportState.timeZoom, state.viewportState.timeOffset, state.mousePosition, state.backgroundColor, state.indicatorSettings.liquidations])
+  }, [state.viewportState.timeZoom, state.viewportState.timeOffset, state.mousePosition, state.backgroundColor, state.indicatorSettings.liquidations, candleData])
 
   // Dedicated axis mouse handlers to prevent conflicts with canvas
   const handleAxisMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {

@@ -134,10 +134,12 @@ export const useChartInteractions = ({
         setHoveredCandle(candleData[candleIndex])
       }
 
-      // Calculate price at mouse position
+      // Calculate price at mouse position with dynamic range
       const chartHeight = canvas.offsetHeight - 100
-      const priceRange = (113000 - 107000) / viewportState.priceZoom
-      const price = 113000 - ((y - 50 + viewportState.priceOffset) / chartHeight) * priceRange
+      const priceMax = Math.max(...candleData.map(c => c.high))
+      const priceMin = Math.min(...candleData.map(c => c.low))
+      const priceRange = (priceMax - priceMin) / viewportState.priceZoom
+      const price = priceMax - ((y - 50 + viewportState.priceOffset) / chartHeight) * priceRange
 
       setMousePosition({ x, y, price })
     },
@@ -333,31 +335,41 @@ export const useChartInteractions = ({
     // Detect which axis we're hovering over
     const axisZone = getAxisZone(x, y, canvas)
     
-    // Ultra-aggressive zoom factors for lightning-fast response
-    const wheelSensitivity = Math.abs(e.deltaY) / 50 // Increased sensitivity
-    const baseZoomFactor = e.deltaY > 0 ? 0.8 : 1.25 // More aggressive base zoom
-    const dynamicZoomFactor = e.deltaY > 0 
-      ? Math.max(0.3, 1 - wheelSensitivity * 0.4)  // Ultra-fast zoom out
-      : Math.min(3.0, 1 + wheelSensitivity * 0.5)  // Ultra-fast zoom in
-
-    // Axis-specific zooming
+    // Axis-specific zooming (precise for professional trading)
     if (axisZone === 'price-axis' || e.ctrlKey || e.metaKey) {
-      // Price zoom (vertical) - ultra responsive
+      // Price zoom (vertical) - responsive but precise
+      const wheelSensitivity = Math.abs(e.deltaY) / 50
+      const dynamicZoomFactor = e.deltaY > 0 
+        ? Math.max(0.3, 1 - wheelSensitivity * 0.4)  // Controlled zoom out
+        : Math.min(3.0, 1 + wheelSensitivity * 0.5)  // Controlled zoom in
+        
       setViewportState(prev => ({
         ...prev,
         priceZoom: Math.max(0.05, Math.min(50, prev.priceZoom * dynamicZoomFactor))
       }))
     } else if (axisZone === 'time-axis') {
-      // Time zoom (horizontal) - ultra responsive  
+      // Time zoom (horizontal) - responsive but precise
+      const wheelSensitivity = Math.abs(e.deltaY) / 50
+      const dynamicZoomFactor = e.deltaY > 0 
+        ? Math.max(0.3, 1 - wheelSensitivity * 0.4)  // Controlled zoom out
+        : Math.min(3.0, 1 + wheelSensitivity * 0.5)  // Controlled zoom in
+        
       setViewportState(prev => ({
         ...prev,
         timeZoom: Math.max(0.05, Math.min(50, prev.timeZoom * dynamicZoomFactor))
       }))
     } else {
-      // Default behavior - time zoom when no modifier
+      // ⚡ 360 ZOOM - Fast but controllable ⚡
+      // Balanced parameters for smooth navigation
+      const sensitivity = Math.abs(e.deltaY) / 30 // More controlled than before
+      const zoomFactor = e.deltaY > 0 
+        ? Math.max(0.2, 1 - sensitivity * 0.6)  // Smooth zoom out
+        : Math.min(4.0, 1 + sensitivity * 0.8)  // Smooth zoom in
+        
       setViewportState(prev => ({
         ...prev,
-        timeZoom: Math.max(0.05, Math.min(50, prev.timeZoom * dynamicZoomFactor))
+        timeZoom: Math.max(0.01, Math.min(100, prev.timeZoom * zoomFactor)),
+        priceZoom: Math.max(0.01, Math.min(100, prev.priceZoom * zoomFactor))
       }))
     }
   }, [setViewportState, getAxisZone])
