@@ -11,7 +11,7 @@ interface TopNavigationProps {
 
 export const TopNavigation: React.FC<TopNavigationProps> = ({ className = "" }) => {
   return (
-    <div className={`h-8 bg-[#2a2a2a] flex items-center justify-between px-4 border-b border-gray-700 ${className}`}>
+    <div className={`h-8 bg-[#181818] flex items-center justify-between px-4 border-b border-gray-700 ${className}`}>
       <div className="flex space-x-6">
         <span className="text-gray-300 cursor-pointer hover:text-white">DOM</span>
         <span className="text-white cursor-pointer">Charts</span>

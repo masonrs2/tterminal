@@ -14,14 +14,18 @@ interface ChartControlsProps {
   showSettings: boolean
   activeIndicators: string[]
   selectedDrawingTool: string | null
-  onToggleTimeframes: () => void
-  onToggleIndicators: () => void
-  onToggleTools: () => void
+  onShowTimeframes: () => void
+  onHideTimeframes: () => void
+  onShowIndicators: () => void
+  onHideIndicators: () => void
+  onShowTools: () => void
+  onHideTools: () => void
   onToggleSettings: () => void
   onSelectTimeframe: (timeframe: string) => void
   onToggleIndicator: (indicator: string) => void
   onSelectDrawingTool: (tool: string) => void
   onClearDrawings: () => void
+  onResetViewport: () => void
   timeframesRef: React.RefObject<HTMLDivElement | null>
   indicatorsRef: React.RefObject<HTMLDivElement | null>
   toolsRef: React.RefObject<HTMLDivElement | null>
@@ -44,14 +48,18 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   showSettings,
   activeIndicators,
   selectedDrawingTool,
-  onToggleTimeframes,
-  onToggleIndicators,
-  onToggleTools,
+  onShowTimeframes,
+  onHideTimeframes,
+  onShowIndicators,
+  onHideIndicators,
+  onShowTools,
+  onHideTools,
   onToggleSettings,
   onSelectTimeframe,
   onToggleIndicator,
   onSelectDrawingTool,
   onClearDrawings,
+  onResetViewport,
   timeframesRef,
   indicatorsRef,
   toolsRef,
@@ -59,22 +67,26 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   className = ""
 }) => {
   return (
-    <div className={`h-8 bg-[#2a2a2a] flex items-center justify-between px-4 border-b border-gray-700 ${className}`}>
+    <div className={`h-8 bg-[#181818] flex items-center justify-between px-4 border-b border-gray-700 ${className}`}>
       <div className="flex items-center space-x-4">
         {/* Timeframe Dropdown */}
-        <div className="relative" ref={timeframesRef}>
+        <div 
+          className="relative" 
+          ref={timeframesRef}
+          onMouseEnter={onShowTimeframes}
+          onMouseLeave={onHideTimeframes}
+        >
           <button
-            onClick={onToggleTimeframes}
-            className="flex items-center bg-[#1a1a1a] border border-gray-600 rounded px-3 py-1 text-blue-400 cursor-pointer hover:bg-[#2a2a2a] transition-colors"
+            className="flex items-center bg-[#0f0f0f] border border-gray-600 rounded px-3 py-1 text-blue-400 cursor-pointer hover:bg-[#1a1a1a] transition-colors"
           >
             {selectedTimeframe} <ChevronDown className="w-3 h-3 ml-1" />
           </button>
           {showTimeframes && (
-            <div className="absolute top-8 left-0 bg-[#1a1a1a] border border-gray-600 rounded shadow-lg z-20 min-w-20">
+            <div className="absolute top-8 left-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-20 min-w-20">
               {timeframes.map((tf) => (
                 <div
                   key={tf}
-                  className="px-3 py-2 text-xs hover:bg-[#2a2a2a] cursor-pointer transition-colors"
+                  className="px-3 py-2 text-xs hover:bg-[#1a1a1a] cursor-pointer transition-colors"
                   onClick={() => onSelectTimeframe(tf)}
                 >
                   {tf}
@@ -87,19 +99,23 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
         <span className="cursor-pointer hover:text-blue-400">Candlesticks</span>
 
         {/* Indicators Dropdown */}
-        <div className="relative" ref={indicatorsRef}>
+        <div 
+          className="relative" 
+          ref={indicatorsRef}
+          onMouseEnter={onShowIndicators}
+          onMouseLeave={onHideIndicators}
+        >
           <button
-            onClick={onToggleIndicators}
-            className="flex items-center bg-[#1a1a1a] border border-gray-600 rounded px-3 py-1 cursor-pointer hover:bg-[#2a2a2a] transition-colors"
+            className="flex items-center bg-[#0f0f0f] border border-gray-600 rounded px-3 py-1 cursor-pointer hover:bg-[#1a1a1a] transition-colors"
           >
             Indicators <ChevronDown className="w-3 h-3 ml-1" />
           </button>
           {showIndicators && (
-            <div className="absolute top-8 left-0 bg-[#1a1a1a] border border-gray-600 rounded shadow-lg z-20 min-w-48">
+            <div className="absolute top-8 left-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-20 min-w-48">
               {indicators.map((indicator) => (
                 <div
                   key={indicator}
-                  className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#2a2a2a] cursor-pointer transition-colors"
+                  className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#1a1a1a] cursor-pointer transition-colors"
                   onClick={() => onToggleIndicator(indicator)}
                 >
                   <span>{indicator}</span>
@@ -123,19 +139,23 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
         </div>
 
         {/* Tools Dropdown */}
-        <div className="relative" ref={toolsRef}>
+        <div 
+          className="relative" 
+          ref={toolsRef}
+          onMouseEnter={onShowTools}
+          onMouseLeave={onHideTools}
+        >
           <button
-            onClick={onToggleTools}
-            className="flex items-center bg-[#1a1a1a] border border-gray-600 rounded px-3 py-1 cursor-pointer hover:bg-[#2a2a2a] transition-colors"
+            className="flex items-center bg-[#0f0f0f] border border-gray-600 rounded px-3 py-1 cursor-pointer hover:bg-[#1a1a1a] transition-colors"
           >
             Tools <ChevronDown className="w-3 h-3 ml-1" />
           </button>
           {showTools && (
-            <div className="absolute top-8 left-0 bg-[#1a1a1a] border border-gray-600 rounded shadow-lg z-20 min-w-48">
+            <div className="absolute top-8 left-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-20 min-w-48">
               {drawingToolsList.map((tool) => (
                 <div
                   key={tool}
-                  className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#2a2a2a] cursor-pointer transition-colors"
+                  className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#1a1a1a] cursor-pointer transition-colors"
                   onClick={() => onSelectDrawingTool(tool)}
                 >
                   <span>{tool}</span>
@@ -145,7 +165,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
               ))}
               <div className="border-t border-gray-600 my-1"></div>
               <div
-                className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#2a2a2a] cursor-pointer transition-colors"
+                className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#1a1a1a] cursor-pointer transition-colors"
                 onClick={onClearDrawings}
               >
                 <span>Clear All Drawings</span>
@@ -170,7 +190,13 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
       <div className="flex items-center space-x-4">
         <span>0.1</span>
         <span>Auto</span>
-        <span className="cursor-pointer hover:text-blue-400">Reset</span>
+        <span 
+          className="cursor-pointer hover:text-blue-400"
+          onClick={onResetViewport}
+          title="Reset chart zoom and position"
+        >
+          Reset
+        </span>
       </div>
     </div>
   )

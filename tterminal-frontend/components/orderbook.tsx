@@ -115,14 +115,14 @@ export default function HighPerformanceOrderbook({
     >
       {/* Resize handle */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-1 bg-gray-600 cursor-ew-resize hover:bg-gray-500 z-10"
+        className="absolute left-0 top-0 bottom-0 w-1 bg-[#2a2a2a] cursor-ew-resize hover:bg-[#353535] z-10"
         onMouseDown={handleResizeStart}
       >
         <GripVertical className="w-3 h-3 text-gray-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
       </div>
 
       {/* Header */}
-      <div className="h-8 bg-[#2a2a2a] flex items-center justify-between px-4 border-b border-gray-700 flex-shrink-0">
+      <div className="h-8 bg-[#181818] flex items-center justify-between px-4 border-b border-gray-700 flex-shrink-0">
         <div className="flex items-center space-x-4 text-xs">
           <span>buys</span>
           <span>bids</span>

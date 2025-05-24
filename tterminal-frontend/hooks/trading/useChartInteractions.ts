@@ -335,42 +335,94 @@ export const useChartInteractions = ({
     // Detect which axis we're hovering over
     const axisZone = getAxisZone(x, y, canvas)
     
-    // Axis-specific zooming (precise for professional trading)
+    // Axis-specific zooming with focal point preservation
     if (axisZone === 'price-axis' || e.ctrlKey || e.metaKey) {
-      // Price zoom (vertical) - responsive but precise
-      const wheelSensitivity = Math.abs(e.deltaY) / 50
-      const dynamicZoomFactor = e.deltaY > 0 
-        ? Math.max(0.3, 1 - wheelSensitivity * 0.4)  // Controlled zoom out
-        : Math.min(3.0, 1 + wheelSensitivity * 0.5)  // Controlled zoom in
-        
-      setViewportState(prev => ({
-        ...prev,
-        priceZoom: Math.max(0.05, Math.min(50, prev.priceZoom * dynamicZoomFactor))
-      }))
-    } else if (axisZone === 'time-axis') {
-      // Time zoom (horizontal) - responsive but precise
-      const wheelSensitivity = Math.abs(e.deltaY) / 50
-      const dynamicZoomFactor = e.deltaY > 0 
-        ? Math.max(0.3, 1 - wheelSensitivity * 0.4)  // Controlled zoom out
-        : Math.min(3.0, 1 + wheelSensitivity * 0.5)  // Controlled zoom in
-        
-      setViewportState(prev => ({
-        ...prev,
-        timeZoom: Math.max(0.05, Math.min(50, prev.timeZoom * dynamicZoomFactor))
-      }))
-    } else {
-      // ⚡ 360 ZOOM - Smooth and precise ⚡
-      // More conservative parameters for better control
-      const sensitivity = Math.abs(e.deltaY) / 60 // Slower sensitivity (was 30)
+      // Price zoom (vertical) with focal point
+      const wheelSensitivity = Math.abs(e.deltaY) / 31
       const zoomFactor = e.deltaY > 0 
-        ? Math.max(0.4, 1 - sensitivity * 0.4)  // Gentler zoom out (was 0.2 and 0.6)
-        : Math.min(2.5, 1 + sensitivity * 0.5)  // Gentler zoom in (was 4.0 and 0.8)
+        ? Math.max(0.3, 1 - wheelSensitivity * 0.4)  // Controlled zoom out
+        : Math.min(3.0, 1 + wheelSensitivity * 0.5)  // Controlled zoom in
         
-      setViewportState(prev => ({
-        ...prev,
-        timeZoom: Math.max(0.01, Math.min(100, prev.timeZoom * zoomFactor)),
-        priceZoom: Math.max(0.01, Math.min(100, prev.priceZoom * zoomFactor))
-      }))
+      setViewportState(prev => {
+        const newPriceZoom = Math.max(0.05, Math.min(50, prev.priceZoom * zoomFactor))
+        
+        // Maintain focal point for price axis
+        const chartHeight = canvas.offsetHeight - 100
+        const pricePositionInChart = y - 50 + prev.priceOffset
+        const priceFocalPoint = pricePositionInChart / (chartHeight * prev.priceZoom)
+        
+        const newPricePosition = priceFocalPoint * chartHeight * newPriceZoom
+        const newPriceOffset = newPricePosition - (y - 50)
+        
+        return {
+          ...prev,
+          priceZoom: newPriceZoom,
+          priceOffset: newPriceOffset
+        }
+      })
+    } else if (axisZone === 'time-axis') {
+      // Time zoom (horizontal) with focal point
+      const wheelSensitivity = Math.abs(e.deltaY) / 31
+      const zoomFactor = e.deltaY > 0 
+        ? Math.max(0.3, 1 - wheelSensitivity * 0.4)  // Controlled zoom out
+        : Math.min(3.0, 1 + wheelSensitivity * 0.5)  // Controlled zoom in
+        
+      setViewportState(prev => {
+        const newTimeZoom = Math.max(0.05, Math.min(50, prev.timeZoom * zoomFactor))
+        
+        // Maintain focal point for time axis
+        const spacing = 12
+        const timePositionInChart = x - 50 + prev.timeOffset
+        const timeFocalPoint = timePositionInChart / (spacing * prev.timeZoom)
+        
+        const newTimePosition = timeFocalPoint * spacing * newTimeZoom
+        const newTimeOffset = newTimePosition - (x - 50)
+        
+        return {
+          ...prev,
+          timeZoom: newTimeZoom,
+          timeOffset: newTimeOffset
+        }
+      })
+    } else {
+      // ⚡ 360 ZOOM - Camera-style focal point zooming ⚡
+      const sensitivity = Math.abs(e.deltaY) / 34
+      const zoomFactor = e.deltaY > 0 
+        ? Math.max(0.4, 1 - sensitivity * 0.4)  // Zoom out
+        : Math.min(2.5, 1 + sensitivity * 0.5)  // Zoom in
+      
+      setViewportState(prev => {
+        // Calculate the new zoom levels
+        const newTimeZoom = Math.max(0.01, Math.min(100, prev.timeZoom * zoomFactor))
+        const newPriceZoom = Math.max(0.01, Math.min(100, prev.priceZoom * zoomFactor))
+        
+        // Calculate focal point in chart coordinates
+        const chartHeight = canvas.offsetHeight - 100
+        const spacing = 12 // Base spacing
+        
+        // Time focal point (horizontal)
+        const timePositionInChart = x - 50 + prev.timeOffset // Position relative to chart start
+        const timeFocalPoint = timePositionInChart / (spacing * prev.timeZoom) // Normalized position
+        
+        // Price focal point (vertical) 
+        const pricePositionInChart = y - 50 + prev.priceOffset // Position relative to chart start
+        const priceFocalPoint = pricePositionInChart / (chartHeight * prev.priceZoom) // Normalized position
+        
+        // Calculate new offsets to maintain focal point
+        const newTimePosition = timeFocalPoint * spacing * newTimeZoom
+        const newTimeOffset = newTimePosition - (x - 50)
+        
+        const newPricePosition = priceFocalPoint * chartHeight * newPriceZoom
+        const newPriceOffset = newPricePosition - (y - 50)
+        
+        return {
+          ...prev,
+          timeZoom: newTimeZoom,
+          priceZoom: newPriceZoom,
+          timeOffset: newTimeOffset,
+          priceOffset: newPriceOffset
+        }
+      })
     }
   }, [setViewportState, getAxisZone])
 

@@ -278,6 +278,24 @@ export default function TradingTerminal() {
     }))
   }, [state])
 
+  const handleResetIndicator = useCallback((indicator: string) => {
+    state.resetSpecificIndicator(indicator)
+  }, [state])
+
+  const handleResetTheme = useCallback(() => {
+    state.resetThemeSettings()
+  }, [state])
+
+  const handleResetAllSettings = useCallback(() => {
+    if (confirm('Reset all settings to defaults? This cannot be undone.')) {
+      state.resetAllSettings()
+    }
+  }, [state])
+
+  const handleResetViewport = useCallback(() => {
+    state.resetViewportSettings()
+  }, [state])
+
   // Handle canvas mouse movement for drawing rectangles
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
@@ -349,11 +367,35 @@ export default function TradingTerminal() {
     }))
   }, [state])
 
+  // Close all settings panels when clicking on chart
+  const handleChartClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Close all open settings panels when clicking on the chart
+    if (state.showChartSettings) {
+      state.setShowChartSettings(false)
+    }
+    if (state.openSettingsPanel) {
+      state.setOpenSettingsPanel(null)
+    }
+    if (state.showIndicators) {
+      state.setShowIndicators(false)
+    }
+    if (state.showTools) {
+      state.setShowTools(false)
+    }
+    if (state.showTimeframes) {
+      state.setShowTimeframes(false)
+    }
+    if (state.showSettings) {
+      state.setShowSettings(false)
+    }
+  }, [state])
+
   // Combined mouse down handler
   const handleCombinedMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    handleChartClick(e)
     handleChartMouseDown(e)
     handleCanvasMouseDown(e)
-  }, [handleChartMouseDown, handleCanvasMouseDown])
+  }, [handleChartClick, handleChartMouseDown, handleCanvasMouseDown])
 
   // Global drag handlers
   useEffect(() => {
@@ -366,10 +408,14 @@ export default function TradingTerminal() {
       if (state.dragState.isDraggingChart) {
         const deltaX = e.clientX - state.dragState.dragStart.x
         const deltaY = e.clientY - state.dragState.dragStart.y
+        
+        // Apply drag sensitivity multiplier for faster panning
+        const dragSensitivity = 1.25
+        
         state.setViewportState(prev => ({
           ...prev,
-          timeOffset: prev.timeOffset - deltaX,
-          priceOffset: prev.priceOffset - deltaY
+          timeOffset: prev.timeOffset - (deltaX * dragSensitivity),
+          priceOffset: prev.priceOffset - (deltaY * dragSensitivity)
         }))
         state.setDragState(prev => ({
           ...prev,
@@ -692,6 +738,57 @@ export default function TradingTerminal() {
     }))
   }, [state])
 
+  // Reset chart to current price position (latest bars)
+  const handleResetToCurrentPrice = useCallback(() => {
+    // Calculate offset to show latest candles on the right side
+    const canvas = canvasRef.current
+    if (!canvas) return
+    
+    const spacing = 12 * 1 // Use default zoom for calculation
+    const totalWidth = candleData.length * spacing
+    const canvasWidth = canvas.offsetWidth
+    const rightMargin = 100 // Keep some margin from the right edge
+    
+    // Position so latest candles are visible on the right side
+    const targetOffset = Math.max(0, totalWidth - canvasWidth + rightMargin)
+    
+    state.setViewportState({
+      priceZoom: 1,
+      timeZoom: 1,
+      priceOffset: 0,
+      timeOffset: targetOffset,
+    })
+  }, [state, candleData])
+
+  // Format datetime for crosshair (e.g., "Sat, May 25 07:00")
+  const formatCrosshairDateTime = useCallback((timestamp: number) => {
+    const date = new Date(timestamp)
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    
+    const dayName = days[date.getDay()]
+    const monthName = months[date.getMonth()]
+    const day = date.getDate()
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    
+    return `${dayName}, ${monthName} ${day} ${hours}:${minutes}`
+  }, [])
+
+  // Get crosshair datetime based on mouse position
+  const getCrosshairDateTime = useCallback(() => {
+    if (!state.mousePosition.x || !candleData.length) return ''
+    
+    const spacing = 12 * state.viewportState.timeZoom
+    const candleIndex = Math.floor((state.mousePosition.x - 50 + state.viewportState.timeOffset) / spacing)
+    
+    if (candleIndex >= 0 && candleIndex < candleData.length) {
+      return formatCrosshairDateTime(candleData[candleIndex].timestamp)
+    }
+    
+    return ''
+  }, [state.mousePosition.x, state.viewportState.timeZoom, state.viewportState.timeOffset, candleData, formatCrosshairDateTime])
+
   const chartAreaWidth = state.showOrderbook ? `calc(100% - ${state.componentSizes.orderbookWidth}px)` : "100%"
 
   return (
@@ -714,14 +811,18 @@ export default function TradingTerminal() {
         showSettings={state.showSettings}
         activeIndicators={state.activeIndicators}
         selectedDrawingTool={state.selectedDrawingTool}
-        onToggleTimeframes={() => state.setShowTimeframes(!state.showTimeframes)}
-        onToggleIndicators={() => state.setShowIndicators(!state.showIndicators)}
-        onToggleTools={() => state.setShowTools(!state.showTools)}
+        onShowTimeframes={() => state.setShowTimeframes(true)}
+        onHideTimeframes={() => state.setShowTimeframes(false)}
+        onShowIndicators={() => state.setShowIndicators(true)}
+        onHideIndicators={() => state.setShowIndicators(false)}
+        onShowTools={() => state.setShowTools(true)}
+        onHideTools={() => state.setShowTools(false)}
         onToggleSettings={() => state.setShowSettings(!state.showSettings)}
         onSelectTimeframe={handleSelectTimeframe}
         onToggleIndicator={handleToggleIndicator}
         onSelectDrawingTool={handleSelectDrawingTool}
         onClearDrawings={handleClearDrawings}
+        onResetViewport={handleResetViewport}
         timeframesRef={timeframesDropdownRef}
         indicatorsRef={indicatorsDropdownRef}
         toolsRef={toolsDropdownRef}
@@ -738,7 +839,10 @@ export default function TradingTerminal() {
             <div className="text-xs">
               <span 
                 className="cursor-pointer hover:text-blue-300 hover:bg-blue-900/20 px-1 rounded transition-colors"
-                onClick={() => state.setShowChartSettings(!state.showChartSettings)}
+                onClick={(e) => {
+                  e.stopPropagation() // Prevent chart click handler from interfering
+                  state.setShowChartSettings(!state.showChartSettings)
+                }}
                 title="Click to open chart settings"
               >
                 binancef btcusdt
@@ -754,7 +858,10 @@ export default function TradingTerminal() {
               )}
               <span
                 className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300"
-                onClick={() => removeIndicator("main")}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  removeIndicator("main")
+                }}
               >
                 remove
               </span>
@@ -766,13 +873,19 @@ export default function TradingTerminal() {
                   className={`cursor-pointer ${state.hoveredIndicator === "Volume" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("Volume")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
-                  onClick={() => openIndicatorSettings("volume")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openIndicatorSettings("volume")
+                  }}
                 >
                   Volume sell 556.61 buy 852.30
                 </span>
                 <span
                   className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300"
-                  onClick={() => removeIndicator("Volume")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removeIndicator("Volume")
+                  }}
                 >
                   remove
                 </span>
@@ -785,13 +898,19 @@ export default function TradingTerminal() {
                   className={`cursor-pointer ${state.hoveredIndicator === "VPVR" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("VPVR")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
-                  onClick={() => openIndicatorSettings("vpvr")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openIndicatorSettings("vpvr")
+                  }}
                 >
                   VPVR
                 </span>
                 <span
                   className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300"
-                  onClick={() => removeIndicator("VPVR")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removeIndicator("VPVR")
+                  }}
                 >
                   remove
                 </span>
@@ -804,13 +923,19 @@ export default function TradingTerminal() {
                   className={`cursor-pointer ${state.hoveredIndicator === "Heatmap" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("Heatmap")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
-                  onClick={() => openIndicatorSettings("heatmap")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openIndicatorSettings("heatmap")
+                  }}
                 >
                   Heatmap binancef
                 </span>
                 <span
                   className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300"
-                  onClick={() => removeIndicator("Heatmap")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removeIndicator("Heatmap")
+                  }}
                 >
                   remove
                 </span>
@@ -818,13 +943,56 @@ export default function TradingTerminal() {
             )}
           </div>
 
+          {/* Reset to Current Price Button */}
+          <button
+            onClick={handleResetToCurrentPrice}
+            className="absolute top-2 right-4 z-10 bg-black/40 hover:bg-black/60 border border-gray-500/50 rounded px-1.5 py-0.5 text-xs transition-all flex items-center space-x-1 backdrop-blur-sm"
+            title="Reset view to latest candles"
+          >
+            <svg 
+              className="w-2.5 h-2.5" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" 
+              />
+            </svg>
+            <span className="text-[10px] text-gray-300">Current</span>
+          </button>
+
+          {/* Crosshair DateTime Display */}
+          {state.mousePosition.x > 0 && getCrosshairDateTime() && (
+            <div 
+              className="absolute bottom-14 z-20 bg-[#181818] border border-gray-600 rounded px-2 py-1 text-xs text-white pointer-events-none"
+              style={{ 
+                left: `${Math.max(10, Math.min(state.mousePosition.x - 60, window.innerWidth - 140))}px` 
+              }}
+            >
+              {getCrosshairDateTime()}
+            </div>
+          )}
+
           {/* VPVR Settings Panel */}
           {state.openSettingsPanel === "vpvr" && (
             <div
-              className="absolute top-20 left-4 z-20 bg-[#2a2a2a] border border-gray-600 rounded p-4 min-w-80"
+              className="absolute top-20 left-4 z-20 bg-[#181818] border border-gray-600 rounded p-4 min-w-80"
               ref={vpvrSettingsPanelRef}
             >
-              <h3 className="text-sm font-bold mb-4">VPVR Settings</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold">VPVR Settings</h3>
+                <button
+                  onClick={() => handleResetIndicator('vpvr')}
+                  className="px-2 py-1 text-xs bg-[#2a2a2a] hover:bg-[#353535] rounded transition-colors"
+                  title="Reset to defaults"
+                >
+                  Reset
+                </button>
+              </div>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -877,7 +1045,7 @@ export default function TradingTerminal() {
                   <select
                     value={state.indicatorSettings.vpvr.origin}
                     onChange={(e) => updateIndicatorSetting("vpvr", "origin", e.target.value)}
-                    className="bg-[#1a1a1a] border border-gray-600 rounded px-2 py-1"
+                    className="bg-[#0f0f0f] border border-gray-600 rounded px-2 py-1"
                   >
                     <option value="left">left</option>
                     <option value="right">right</option>
@@ -936,10 +1104,28 @@ export default function TradingTerminal() {
           {/* Chart Settings Panel */}
           {state.showChartSettings && (
             <div
-              className="absolute top-20 left-4 z-20 bg-[#2a2a2a] border border-gray-600 rounded p-4 min-w-80"
+              className="absolute top-20 left-4 z-20 bg-[#181818] border border-gray-600 rounded p-4 min-w-80"
               ref={chartSettingsPanelRef}
             >
-              <h3 className="text-sm font-bold mb-4">Chart Settings</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold">Chart Settings</h3>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleResetTheme}
+                    className="px-2 py-1 text-xs bg-[#2a2a2a] hover:bg-[#353535] rounded transition-colors"
+                    title="Reset theme colors"
+                  >
+                    Reset Theme
+                  </button>
+                  <button
+                    onClick={handleResetAllSettings}
+                    className="px-2 py-1 text-xs bg-red-600 hover:bg-red-500 rounded transition-colors"
+                    title="Reset all settings to defaults"
+                  >
+                    Reset All
+                  </button>
+                </div>
+              </div>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -1057,82 +1243,111 @@ export default function TradingTerminal() {
           {/* CVD Chart with resize handle */}
           {state.activeIndicators.includes("CVD") && (
             <div className="border-t border-gray-700 relative" style={{ height: `${state.componentSizes.cvdHeight}px` }}>
+              {/* Resize handle at top */}
+              <div
+                className="absolute top-0 left-0 right-0 h-1 bg-[#2a2a2a] cursor-ns-resize hover:bg-[#353535] z-10"
+                onMouseDown={handleCvdResize}
+                title="Drag to resize CVD chart"
+              />
               <canvas ref={cvdCanvasRef} className="w-full h-full" style={{ width: "100%", height: "100%" }} />
-              <div className="absolute left-2 top-2 text-xs">
+              <div className="absolute left-2 top-2 text-xs z-20">
                 <span
                   className={`cursor-pointer ${state.hoveredIndicator === "CVD" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("CVD")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
-                  onClick={() => openIndicatorSettings("cvd")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openIndicatorSettings("cvd")
+                  }}
                 >
                   CVD
                 </span>
                 <span
                   className="ml-2 text-blue-400 cursor-pointer hover:text-blue-300"
-                  onClick={() => removeIndicator("CVD")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removeIndicator("CVD")
+                  }}
                 >
                   remove
                 </span>
               </div>
-              <div
-                className="absolute bottom-0 left-0 right-0 h-1 bg-gray-600 cursor-ns-resize hover:bg-gray-500"
-                onMouseDown={handleCvdResize}
-              />
             </div>
           )}
 
           {/* Liquidations Chart with resize handle */}
           {state.activeIndicators.includes("Liquidations") && (
             <div className="border-t border-gray-700 relative" style={{ height: `${state.componentSizes.liquidationsHeight}px` }}>
+              {/* Resize handle at top */}
+              <div
+                className="absolute top-0 left-0 right-0 h-1 bg-[#2a2a2a] cursor-ns-resize hover:bg-[#353535] z-10"
+                onMouseDown={handleLiquidationsResize}
+                title="Drag to resize Liquidations chart"
+              />
               <canvas ref={liquidationsCanvasRef} className="w-full h-full" style={{ width: "100%", height: "100%" }} />
-              <div className="absolute left-2 top-2 text-xs">
+              <div className="absolute left-2 top-2 text-xs z-20">
                 <span
                   className={`cursor-pointer ${state.hoveredIndicator === "Liquidations" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("Liquidations")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
-                  onClick={() => openIndicatorSettings("liquidations")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openIndicatorSettings("liquidations")
+                  }}
                 >
                   Liquidations
                 </span>
                 <span
                   className="ml-2 text-blue-400 cursor-pointer hover:text-blue-300"
-                  onClick={() => removeIndicator("Liquidations")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removeIndicator("Liquidations")
+                  }}
                 >
                   remove
                 </span>
               </div>
-              <div className="absolute right-2 bottom-2 text-xs">
+              <div className="absolute right-2 bottom-2 text-xs z-20">
                 <div>40</div>
                 <div>30</div>
                 <div>20</div>
                 <div>10</div>
                 <div>0</div>
               </div>
-              <div
-                className="absolute bottom-0 left-0 right-0 h-1 bg-gray-600 cursor-ns-resize hover:bg-gray-500"
-                onMouseDown={handleLiquidationsResize}
-              />
             </div>
           )}
 
           {/* Time Axis - Interactive version for horizontal zoom */}
           <div 
-            className="h-8 bg-[#2a2a2a] border-t border-gray-700 flex items-center justify-between px-4 text-xs cursor-ew-resize hover:bg-[#333333] transition-colors select-none"
+            className="h-12 bg-[#181818] border-t border-gray-700 cursor-ew-resize hover:bg-[#202020] transition-colors select-none"
             onMouseMove={handleAxisMouseMove}
             onMouseDown={handleAxisMouseDown}
             onMouseUp={handleCanvasMouseUp}
             onWheel={(e) => handleAxisWheel(e, 'time')}
             title="Drag or scroll to zoom time axis horizontally"
           >
-            <span>00:00</span>
-            <span>00:00</span>
-            <span>00:00</span>
-            <span>00:00</span>
-            <span>00:00</span>
-            <span>00:00</span>
-            <span>00:00</span>
-            <span className="text-yellow-400">00:00</span>
-            <span>00:00</span>
+            <div className="flex items-center justify-between px-4 h-6 text-xs">
+              <span>00:00</span>
+              <span>06:00</span>
+              <span>12:00</span>
+              <span>18:00</span>
+              <span>00:00</span>
+              <span>06:00</span>
+              <span>12:00</span>
+              <span className="text-yellow-400">18:00</span>
+              <span>00:00</span>
+            </div>
+            <div className="flex items-center justify-between px-4 h-6 text-xs text-gray-400">
+              <span>5/20/25</span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span>5/21/25</span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span>5/22/25</span>
+            </div>
           </div>
         </div>
 

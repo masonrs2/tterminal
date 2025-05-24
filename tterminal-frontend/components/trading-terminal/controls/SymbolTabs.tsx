@@ -18,16 +18,16 @@ export const SymbolTabs: React.FC<SymbolTabsProps> = ({
   className = "" 
 }) => {
   return (
-    <div className={`h-8 bg-[#2a2a2a] flex items-center px-2 border-b border-gray-700 ${className}`}>
+    <div className={`h-8 bg-[#181818] flex items-center px-2 border-b border-gray-700 ${className}`}>
       <div className="flex space-x-1">
-        <div className="flex items-center bg-[#3a3a3a] px-2 py-1 rounded cursor-pointer hover:bg-[#4a4a4a]">
+        <div className="flex items-center bg-[#202020] px-2 py-1 rounded cursor-pointer hover:bg-[#2a2a2a]">
           <span className="text-xs">binancef solusdt</span>
         </div>
-        <div className="flex items-center bg-[#4a4a4a] px-2 py-1 rounded cursor-pointer">
+        <div className="flex items-center bg-[#2a2a2a] px-2 py-1 rounded cursor-pointer">
           <span className="text-xs">binancef btcusdt</span>
           <X className="w-3 h-3 ml-1 cursor-pointer hover:text-red-400" />
         </div>
-        <div className="flex items-center bg-[#3a3a3a] px-2 py-1 rounded cursor-pointer hover:bg-[#4a4a4a]">
+        <div className="flex items-center bg-[#202020] px-2 py-1 rounded cursor-pointer hover:bg-[#2a2a2a]">
           <span className="text-xs">binancef trumpusdt</span>
         </div>
       </div>

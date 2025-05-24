@@ -4,7 +4,7 @@
  * Now includes localStorage persistence for all UI state
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getStoredData, setStoredData, STORAGE_KEYS } from '../../utils/storage'
 import { useDebounce } from '../useDebounce'
 import type { 
@@ -79,7 +79,7 @@ const defaultIndicatorSettings = {
   chart: {
     showVerticalGrid: true,
     showHorizontalGrid: true,
-    gridColor: "#333333",
+    gridColor: "#1a1a1a",
     gridOpacity: 0.5,
   },
 }
@@ -281,6 +281,42 @@ export const useTradingState = () => {
     saveDrawingTools()
   }, [drawingTools, saveDrawingTools])
 
+  // Reset functions - restore default settings
+  const resetIndicatorSettings = useCallback(() => {
+    setIndicatorSettings(defaultIndicatorSettings)
+  }, [])
+
+  const resetThemeSettings = useCallback(() => {
+    setBackgroundColor(defaultThemeState.backgroundColor)
+    setBullCandleColor(defaultThemeState.bullCandleColor)
+    setBearCandleColor(defaultThemeState.bearCandleColor)
+  }, [])
+
+  const resetViewportSettings = useCallback(() => {
+    setViewportState(defaultViewportState)
+  }, [])
+
+  const resetComponentSizes = useCallback(() => {
+    setComponentSizes(defaultComponentSizes)
+  }, [])
+
+  const resetSpecificIndicator = useCallback((indicatorName: string) => {
+    if (defaultIndicatorSettings[indicatorName as keyof typeof defaultIndicatorSettings]) {
+      setIndicatorSettings(prev => ({
+        ...prev,
+        [indicatorName]: defaultIndicatorSettings[indicatorName as keyof typeof defaultIndicatorSettings]
+      }))
+    }
+  }, [])
+
+  const resetAllSettings = useCallback(() => {
+    resetIndicatorSettings()
+    resetThemeSettings()
+    resetViewportSettings()
+    resetComponentSizes()
+    setDrawingTools([])
+  }, [resetIndicatorSettings, resetThemeSettings, resetViewportSettings, resetComponentSizes])
+
   return {
     // Hydration state
     isHydrated,
@@ -350,5 +386,13 @@ export const useTradingState = () => {
     // Drag state
     dragState,
     setDragState,
+
+    // Reset functions
+    resetIndicatorSettings,
+    resetThemeSettings,
+    resetViewportSettings,
+    resetComponentSizes,
+    resetSpecificIndicator,
+    resetAllSettings,
   }
 } 

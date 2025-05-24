@@ -407,7 +407,7 @@ export const MainChart: React.FC<MainChartProps> = ({
 
       {/* Interactive Price axis with drag support */}
       <div 
-        className="absolute right-0 top-0 bottom-0 w-20 bg-[#2a2a2a] border-l border-gray-700 cursor-ns-resize hover:bg-[#333333] transition-colors select-none"
+        className="absolute right-0 top-0 bottom-0 w-20 bg-[#181818] border-l border-gray-700 cursor-ns-resize hover:bg-[#202020] transition-colors select-none"
         onMouseMove={handleAxisMouseMove}
         onMouseDown={handleAxisMouseDown}
         onMouseUp={onMouseUp}
