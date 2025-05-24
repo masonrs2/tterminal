@@ -3,7 +3,7 @@
  * Handles the primary price chart canvas with candlesticks, volume, and overlays
  */
 
-import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
+import React, { useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react'
 import type { 
   CandleData, 
   MousePosition, 
@@ -68,6 +68,50 @@ export const MainChart: React.FC<MainChartProps> = ({
   onContextMenu,
   className = ""
 }) => {
+
+  // Dedicated axis mouse handlers to prevent conflicts
+  const handleAxisMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const canvasElement = canvasRef?.current
+    if (!canvasElement) return
+
+    const canvasRect = canvasElement.getBoundingClientRect()
+    const divRect = e.currentTarget.getBoundingClientRect()
+    
+    const relativeX = divRect.left - canvasRect.left + (e.clientX - divRect.left)
+    const relativeY = divRect.top - canvasRect.top + (e.clientY - divRect.top)
+    
+    const mockCanvasEvent = {
+      ...e,
+      currentTarget: canvasElement,
+      target: canvasElement,
+      clientX: canvasRect.left + relativeX,
+      clientY: canvasRect.top + relativeY
+    } as React.MouseEvent<HTMLCanvasElement>
+    
+    onMouseMove(mockCanvasEvent)
+  }, [onMouseMove, canvasRef])
+
+  const handleAxisMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const canvasElement = canvasRef?.current
+    if (!canvasElement) return
+
+    const canvasRect = canvasElement.getBoundingClientRect()
+    const divRect = e.currentTarget.getBoundingClientRect()
+    
+    const relativeX = divRect.left - canvasRect.left + (e.clientX - divRect.left)
+    const relativeY = divRect.top - canvasRect.top + (e.clientY - divRect.top)
+    
+    const mockCanvasEvent = {
+      ...e,
+      currentTarget: canvasElement,
+      target: canvasElement,
+      clientX: canvasRect.left + relativeX,
+      clientY: canvasRect.top + relativeY
+    } as React.MouseEvent<HTMLCanvasElement>
+    
+    onMouseDown(mockCanvasEvent)
+    e.stopPropagation()
+  }, [onMouseDown, canvasRef])
 
   /**
    * Main chart rendering effect
@@ -321,9 +365,15 @@ export const MainChart: React.FC<MainChartProps> = ({
         onContextMenu={onContextMenu}
       />
 
-      {/* Price axis with time remaining */}
-      <div className="absolute right-0 top-0 bottom-0 w-20 bg-[#2a2a2a] border-l border-gray-700">
-        <div className="flex flex-col justify-between h-full py-2 text-xs pointer-events-none">
+      {/* Interactive Price axis with drag support */}
+      <div 
+        className="absolute right-0 top-0 bottom-0 w-20 bg-[#2a2a2a] border-l border-gray-700 cursor-ns-resize hover:bg-[#333333] transition-colors select-none"
+        onMouseMove={handleAxisMouseMove}
+        onMouseDown={handleAxisMouseDown}
+        onMouseUp={onMouseUp}
+        title="Drag vertically to zoom price axis"
+      >
+        <div className="flex flex-col justify-between h-full py-2 text-xs">
           <div className="text-right pr-2">111000.0</div>
           <div className="text-right pr-2">110000.0</div>
           <div className="text-right pr-2">109000.0</div>

@@ -130,7 +130,7 @@ export default function TradingTerminal() {
   const liquidationsCanvasRef = useRef<HTMLCanvasElement>(null)
 
   // Chart interactions hook
-  const { handleMouseMove, handleCanvasMouseDown, handleWheel } = useChartInteractions({
+  const { handleMouseMove, handleCanvasMouseDown, handleAxisDragEnd, handleWheel } = useChartInteractions({
     canvasRef,
     candleData,
     drawingMode: state.drawingMode,
@@ -274,6 +274,11 @@ export default function TradingTerminal() {
   // Global drag handlers
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
+      // Don't interfere with axis dragging - let the hook handle it
+      if (state.dragState.isDraggingPrice || state.dragState.isDraggingTime) {
+        return
+      }
+
       if (state.dragState.isDraggingChart) {
         const deltaX = e.clientX - state.dragState.dragStart.x
         const deltaY = e.clientY - state.dragState.dragStart.y
@@ -314,18 +319,10 @@ export default function TradingTerminal() {
     }
 
     const handleMouseUp = () => {
-      state.setDragState(prev => ({
-        ...prev,
-        isDraggingChart: false,
-        isDraggingPrice: false,
-        isDraggingTime: false,
-        isDraggingOrderbook: false,
-        isDraggingCvd: false,
-        isDraggingLiquidations: false,
-      }))
+      handleAxisDragEnd()
     }
 
-    if (state.dragState.isDraggingChart || state.dragState.isDraggingCvd || state.dragState.isDraggingLiquidations) {
+    if (state.dragState.isDraggingChart || state.dragState.isDraggingPrice || state.dragState.isDraggingTime || state.dragState.isDraggingCvd || state.dragState.isDraggingLiquidations) {
       document.addEventListener("mousemove", handleMouseMove)
       document.addEventListener("mouseup", handleMouseUp)
     }
@@ -461,6 +458,55 @@ export default function TradingTerminal() {
       ctx.setLineDash([])
     }
   }, [state.viewportState.timeZoom, state.viewportState.timeOffset, state.mousePosition, state.backgroundColor, state.indicatorSettings.liquidations])
+
+  // Dedicated axis mouse handlers to prevent conflicts with canvas
+  const handleAxisMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Convert div event to canvas-like coordinates for axis detection
+    const canvasElement = canvasRef.current
+    if (!canvasElement) return
+
+    const canvasRect = canvasElement.getBoundingClientRect()
+    const divRect = e.currentTarget.getBoundingClientRect()
+    
+    // Calculate relative position as if it were on the canvas
+    const relativeX = divRect.left - canvasRect.left + (e.clientX - divRect.left)
+    const relativeY = divRect.top - canvasRect.top + (e.clientY - divRect.top)
+    
+    // Create a canvas-like event for the hook
+    const mockCanvasEvent = {
+      ...e,
+      currentTarget: canvasElement,
+      target: canvasElement,
+      clientX: canvasRect.left + relativeX,
+      clientY: canvasRect.top + relativeY
+    } as React.MouseEvent<HTMLCanvasElement>
+    
+    handleMouseMove(mockCanvasEvent)
+  }, [handleMouseMove])
+
+  const handleAxisMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Convert div event to canvas-like coordinates
+    const canvasElement = canvasRef.current
+    if (!canvasElement) return
+
+    const canvasRect = canvasElement.getBoundingClientRect()
+    const divRect = e.currentTarget.getBoundingClientRect()
+    
+    const relativeX = divRect.left - canvasRect.left + (e.clientX - divRect.left)
+    const relativeY = divRect.top - canvasRect.top + (e.clientY - divRect.top)
+    
+    const mockCanvasEvent = {
+      ...e,
+      currentTarget: canvasElement,
+      target: canvasElement,
+      clientX: canvasRect.left + relativeX,
+      clientY: canvasRect.top + relativeY
+    } as React.MouseEvent<HTMLCanvasElement>
+    
+    // Only call the axis-specific mouse down handler
+    handleCanvasMouseDown(mockCanvasEvent)
+    e.stopPropagation()
+  }, [handleCanvasMouseDown])
 
   const chartAreaWidth = state.showOrderbook ? `calc(100% - ${state.componentSizes.orderbookWidth}px)` : "100%"
 
@@ -829,8 +875,14 @@ export default function TradingTerminal() {
             </div>
           )}
 
-          {/* Time Axis - Temporary simplified version */}
-          <div className="h-5 bg-[#2a2a2a] border-t border-gray-700 flex items-center justify-between px-4 text-xs">
+          {/* Time Axis - Interactive version for horizontal zoom */}
+          <div 
+            className="h-8 bg-[#2a2a2a] border-t border-gray-700 flex items-center justify-between px-4 text-xs cursor-ew-resize hover:bg-[#333333] transition-colors select-none"
+            onMouseMove={handleAxisMouseMove}
+            onMouseDown={handleAxisMouseDown}
+            onMouseUp={handleCanvasMouseUp}
+            title="Drag horizontally to zoom time axis"
+          >
             <span>00:00</span>
             <span>00:00</span>
             <span>00:00</span>

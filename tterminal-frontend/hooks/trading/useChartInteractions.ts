@@ -1,6 +1,6 @@
 /**
  * Chart Interactions Hook
- * Manages mouse events, drawing tools, and chart interactions
+ * Manages mouse events, drawing tools, and chart interactions with ultra-fast axis-specific zoom
  */
 
 import { useCallback, useEffect } from 'react'
@@ -44,7 +44,40 @@ export const useChartInteractions = ({
 }: UseChartInteractionsProps) => {
 
   /**
-   * Handle mouse movement for crosshair and candle hover detection
+   * Detect if mouse is over Y-axis (price axis) or X-axis (time axis)
+   */
+  const getAxisZone = useCallback((x: number, y: number, canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect()
+    const priceAxisWidth = 80 // Right side price axis (w-20 = 80px)
+    const timeAxisHeight = 32 // Bottom time axis (h-8 = 32px)
+    const chartWidth = rect.width - priceAxisWidth
+    const chartHeight = rect.height - timeAxisHeight
+    
+    // Check if in price axis zone (right edge)
+    if (x >= chartWidth && x <= rect.width) {
+      return 'price-axis'
+    }
+    
+    // Check if in time axis zone (bottom edge)  
+    if (y >= chartHeight && y <= rect.height) {
+      return 'time-axis'
+    }
+    
+    // Check if near price axis edge (for drag detection)
+    if (x >= chartWidth - 15 && x <= chartWidth + 15) {
+      return 'price-axis-edge'
+    }
+    
+    // Check if near time axis edge (for drag detection)
+    if (y >= chartHeight - 15 && y <= chartHeight + 15) {
+      return 'time-axis-edge'
+    }
+    
+    return 'chart'
+  }, [])
+
+  /**
+   * Handle mouse movement for crosshair, candle hover, and axis detection
    */
   const handleMouseMove = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -54,6 +87,52 @@ export const useChartInteractions = ({
       const rect = canvas.getBoundingClientRect()
       const x = event.clientX - rect.left
       const y = event.clientY - rect.top
+
+      // Handle active axis dragging only
+      if (dragState.isDraggingPrice) {
+        const deltaY = y - dragState.dragStart.y
+        const sensitivity = 0.002 // Ultra-sensitive for professional trading
+        const zoomFactor = 1 + (deltaY * sensitivity)
+        
+        setViewportState(prev => ({
+          ...prev,
+          priceZoom: Math.max(0.05, Math.min(50, prev.priceZoom * zoomFactor))
+        }))
+        
+        // Update drag start for continuous movement
+        setDragState(prev => ({ ...prev, dragStart: { x, y } }))
+        return
+      }
+
+      if (dragState.isDraggingTime) {
+        const deltaX = x - dragState.dragStart.x
+        const sensitivity = 0.002 // Ultra-sensitive for professional trading
+        const zoomFactor = 1 + (deltaX * sensitivity)
+        
+        setViewportState(prev => ({
+          ...prev,
+          timeZoom: Math.max(0.05, Math.min(50, prev.timeZoom * zoomFactor))
+        }))
+        
+        // Update drag start for continuous movement
+        setDragState(prev => ({ ...prev, dragStart: { x, y } }))
+        return
+      }
+
+      // Don't interfere with existing chart dragging - let trading terminal handle it
+      if (dragState.isDraggingChart) {
+        return
+      }
+
+      // Detect axis zones and update cursor
+      const axisZone = getAxisZone(x, y, canvas)
+      if (axisZone === 'price-axis' || axisZone === 'price-axis-edge') {
+        canvas.style.cursor = 'ns-resize'
+      } else if (axisZone === 'time-axis' || axisZone === 'time-axis-edge') {
+        canvas.style.cursor = 'ew-resize'
+      } else {
+        canvas.style.cursor = 'move'
+      }
 
       // Calculate which candle is being hovered
       const candleWidth = 8 * viewportState.timeZoom
@@ -72,11 +151,11 @@ export const useChartInteractions = ({
 
       setMousePosition({ x, y, price })
     },
-    [viewportState, candleData, setHoveredCandle, setMousePosition]
+    [viewportState, candleData, dragState, setHoveredCandle, setMousePosition, setViewportState, setDragState, getAxisZone]
   )
 
   /**
-   * Handle mouse down events for chart interactions
+   * Handle mouse down events for axis dragging only
    */
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
@@ -86,6 +165,32 @@ export const useChartInteractions = ({
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
 
+    // Check for axis dragging first - this takes priority
+    const axisZone = getAxisZone(x, y, canvas)
+    
+    if (axisZone === 'price-axis' || axisZone === 'price-axis-edge') {
+      setDragState(prev => ({
+        ...prev,
+        isDraggingPrice: true,
+        dragStart: { x, y }
+      }))
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
+    
+    if (axisZone === 'time-axis' || axisZone === 'time-axis-edge') {
+      setDragState(prev => ({
+        ...prev,
+        isDraggingTime: true,
+        dragStart: { x, y }
+      }))
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
+
+    // For chart area, let the existing drawing and chart drag system handle it
     const { timeIndex, price } = screenToChartCoordinates(
       x, y, canvas, 
       viewportState.timeZoom, 
@@ -135,8 +240,6 @@ export const useChartInteractions = ({
     }
 
     // Handle drawing mode
-    if (!drawingMode) return
-
     if (drawingMode === "Horizontal Ray") {
       setDrawingTools((prev) => [
         ...prev,
@@ -166,7 +269,24 @@ export const useChartInteractions = ({
         },
       ])
     }
-  }, [canvasRef, viewportState, drawingTools, drawingMode, candleData, setDrawingTools, setSelectedDrawingIndex, setDrawingMode, setSelectedDrawingTool])
+
+    // Let the trading terminal handle chart panning - don't set isDraggingChart here
+  }, [canvasRef, viewportState, drawingTools, drawingMode, candleData, setDrawingTools, setSelectedDrawingIndex, setDrawingMode, setSelectedDrawingTool, setDragState, getAxisZone])
+
+  /**
+   * Handle mouse up events to stop axis dragging
+   */
+  const handleAxisDragEnd = useCallback(() => {
+    setDragState(prev => ({
+      ...prev,
+      isDraggingPrice: false,
+      isDraggingTime: false,
+      isDraggingChart: false,
+      isDraggingOrderbook: false,
+      isDraggingCvd: false,
+      isDraggingLiquidations: false
+    }))
+  }, [setDragState])
 
   /**
    * Handle keyboard shortcuts for drawing management
@@ -188,6 +308,16 @@ export const useChartInteractions = ({
         setSelectedDrawingIndex(null)
         setDrawingMode(null)
         setSelectedDrawingTool(null)
+        // Stop any dragging
+        setDragState(prev => ({
+          ...prev,
+          isDraggingPrice: false,
+          isDraggingTime: false,
+          isDraggingChart: false,
+          isDraggingOrderbook: false,
+          isDraggingCvd: false,
+          isDraggingLiquidations: false
+        }))
       }
     }
 
@@ -195,39 +325,57 @@ export const useChartInteractions = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [selectedDrawingIndex, setDrawingTools, setSelectedDrawingIndex, setDrawingMode, setSelectedDrawingTool])
+  }, [selectedDrawingIndex, setDrawingTools, setSelectedDrawingIndex, setDrawingMode, setSelectedDrawingTool, setDragState])
 
   /**
-   * Handle wheel events for ultra-fast zooming (360-style)
+   * Handle wheel events for ultra-fast zooming with axis detection
    */
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
     
-    // Ultra-fast zoom factors for responsive trading
-    const fastZoomFactor = e.deltaY > 0 ? 0.7 : 1.4  // Much more aggressive zoom
-    const wheelSensitivity = Math.abs(e.deltaY) / 100 // Scale based on wheel speed
-    const dynamicZoomFactor = e.deltaY > 0 
-      ? Math.max(0.5, 1 - wheelSensitivity * 0.3)  // Faster zoom out
-      : Math.min(2.0, 1 + wheelSensitivity * 0.4)  // Faster zoom in
+    const canvas = canvasRef.current
+    if (!canvas) return
 
-    if (e.ctrlKey || e.metaKey) {
+    const rect = canvas.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    
+    // Detect which axis we're hovering over
+    const axisZone = getAxisZone(x, y, canvas)
+    
+    // Ultra-aggressive zoom factors for lightning-fast response
+    const wheelSensitivity = Math.abs(e.deltaY) / 50 // Increased sensitivity
+    const baseZoomFactor = e.deltaY > 0 ? 0.8 : 1.25 // More aggressive base zoom
+    const dynamicZoomFactor = e.deltaY > 0 
+      ? Math.max(0.3, 1 - wheelSensitivity * 0.4)  // Ultra-fast zoom out
+      : Math.min(3.0, 1 + wheelSensitivity * 0.5)  // Ultra-fast zoom in
+
+    // Axis-specific zooming
+    if (axisZone === 'price-axis' || axisZone === 'price-axis-edge' || e.ctrlKey || e.metaKey) {
       // Price zoom (vertical) - ultra responsive
       setViewportState(prev => ({
         ...prev,
-        priceZoom: Math.max(0.05, Math.min(20, prev.priceZoom * dynamicZoomFactor))
+        priceZoom: Math.max(0.05, Math.min(50, prev.priceZoom * dynamicZoomFactor))
       }))
-    } else {
+    } else if (axisZone === 'time-axis' || axisZone === 'time-axis-edge') {
       // Time zoom (horizontal) - ultra responsive  
       setViewportState(prev => ({
         ...prev,
-        timeZoom: Math.max(0.05, Math.min(20, prev.timeZoom * dynamicZoomFactor))
+        timeZoom: Math.max(0.05, Math.min(50, prev.timeZoom * dynamicZoomFactor))
+      }))
+    } else {
+      // Default behavior - time zoom when no modifier
+      setViewportState(prev => ({
+        ...prev,
+        timeZoom: Math.max(0.05, Math.min(50, prev.timeZoom * dynamicZoomFactor))
       }))
     }
-  }, [setViewportState])
+  }, [setViewportState, getAxisZone])
 
   return {
     handleMouseMove,
     handleCanvasMouseDown,
+    handleAxisDragEnd,
     handleWheel,
   }
 } 
