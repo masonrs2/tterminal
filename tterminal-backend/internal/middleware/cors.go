@@ -17,3 +17,4 @@ func CORS(cfg *config.Config) echo.MiddlewareFunc {
 		AllowCredentials: true,
 	})
 }
+ 

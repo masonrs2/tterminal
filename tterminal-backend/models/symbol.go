@@ -1,27 +1,28 @@
 package models
 
 import (
+	"database/sql"
 	"time"
 )
 
 // Symbol represents a cryptocurrency trading symbol
 type Symbol struct {
-	ID                int64     `json:"id" db:"id"`
-	Symbol            string    `json:"symbol" db:"symbol"`
-	BaseAsset         string    `json:"base_asset" db:"base_asset"`
-	QuoteAsset        string    `json:"quote_asset" db:"quote_asset"`
-	Status            string    `json:"status" db:"status"`
-	IsActive          bool      `json:"is_active" db:"is_active"`
-	PricePrecision    int       `json:"price_precision" db:"price_precision"`
-	QuantityPrecision int       `json:"quantity_precision" db:"quantity_precision"`
-	MinPrice          string    `json:"min_price" db:"min_price"`
-	MaxPrice          string    `json:"max_price" db:"max_price"`
-	MinQty            string    `json:"min_qty" db:"min_qty"`
-	MaxQty            string    `json:"max_qty" db:"max_qty"`
-	StepSize          string    `json:"step_size" db:"step_size"`
-	TickSize          string    `json:"tick_size" db:"tick_size"`
-	CreatedAt         time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
+	ID                int64          `json:"id" db:"id"`
+	Symbol            string         `json:"symbol" db:"symbol"`
+	BaseAsset         string         `json:"base_asset" db:"base_asset"`
+	QuoteAsset        string         `json:"quote_asset" db:"quote_asset"`
+	Status            string         `json:"status" db:"status"`
+	IsActive          bool           `json:"is_active" db:"is_active"`
+	PricePrecision    int            `json:"price_precision" db:"price_precision"`
+	QuantityPrecision int            `json:"quantity_precision" db:"quantity_precision"`
+	MinPrice          sql.NullString `json:"min_price" db:"min_price"`
+	MaxPrice          sql.NullString `json:"max_price" db:"max_price"`
+	MinQty            sql.NullString `json:"min_qty" db:"min_qty"`
+	MaxQty            sql.NullString `json:"max_qty" db:"max_qty"`
+	StepSize          sql.NullString `json:"step_size" db:"step_size"`
+	TickSize          sql.NullString `json:"tick_size" db:"tick_size"`
+	CreatedAt         time.Time      `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at" db:"updated_at"`
 }
 
 // CreateSymbolRequest represents the request structure for creating symbols
