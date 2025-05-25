@@ -79,21 +79,18 @@ export const useChartInteractions = ({
   }, [viewportState.priceZoom])
 
   /**
-   * Smart zoom system: Horizontal first in auto mode, then 360 zoom when candles get too small
+   * Smart zoom system: 
+   * AUTO mode: Zoom horizontally into the candle where vertical crosshair is
+   * MANUAL mode: Full 360 zoom into crosshair intersection (both vertical and horizontal)
    */
   const handleSmartZoom = useCallback((e: WheelEvent, canvas: HTMLCanvasElement, x: number, y: number) => {
-    const MIN_CANDLE_HEIGHT = 8 // Minimum candle height in pixels before switching to 360 zoom
-    const HORIZONTAL_ZOOM_THRESHOLD = 15 // Switch to 360 zoom when candles are smaller than this
-    
-    const currentCandleHeight = calculateCandleHeight(canvas)
-    const shouldUse360Zoom = currentCandleHeight < HORIZONTAL_ZOOM_THRESHOLD
-    
-    // Ultra-snappy sensitivity for horizontal zoom
-    const horizontalSensitivity = Math.abs(e.deltaY) / 25 // More sensitive for snappy feel
+    // Ultra-snappy sensitivity for both modes
+    const horizontalSensitivity = Math.abs(e.deltaY) / 25 // Snappy horizontal zoom
     const regularSensitivity = Math.abs(e.deltaY) / 34 // Regular sensitivity for 360 zoom
     
-    if (navigationMode === 'auto' && !shouldUse360Zoom) {
-      // AUTO MODE: Horizontal zoom first (snappy and fast)
+    if (navigationMode === 'auto') {
+      // AUTO MODE: Horizontal zoom into the candle where vertical crosshair is
+      // Ignore Y position - only focus on the candle under the vertical line
       const zoomFactor = e.deltaY > 0 
         ? Math.max(0.2, 1 - horizontalSensitivity * 0.7)  // Ultra-fast horizontal zoom out
         : Math.min(4.0, 1 + horizontalSensitivity * 0.8)  // Ultra-fast horizontal zoom in
@@ -101,7 +98,7 @@ export const useChartInteractions = ({
       setViewportState(prev => {
         const newTimeZoom = Math.max(0.05, Math.min(50, prev.timeZoom * zoomFactor))
         
-        // Maintain focal point for horizontal zoom
+        // Maintain focal point for horizontal zoom - focus on the candle under vertical crosshair
         const spacing = 12
         const timePositionInChart = x - 50 + prev.timeOffset
         const timeFocalPoint = timePositionInChart / (spacing * prev.timeZoom)
@@ -113,32 +110,34 @@ export const useChartInteractions = ({
           ...prev,
           timeZoom: newTimeZoom,
           timeOffset: newTimeOffset
+          // Note: priceZoom and priceOffset remain unchanged in AUTO mode
         }
       })
     } else {
-      // MANUAL MODE or AUTO MODE with small candles: 360 ZOOM
+      // MANUAL MODE: Full 360 zoom into exact crosshair intersection
+      // Use both X and Y position for focal point
       const zoomFactor = e.deltaY > 0 
         ? Math.max(0.4, 1 - regularSensitivity * 0.4)  // Zoom out
         : Math.min(2.5, 1 + regularSensitivity * 0.5)  // Zoom in
       
       setViewportState(prev => {
-        // Calculate the new zoom levels
+        // Calculate the new zoom levels for both axes
         const newTimeZoom = Math.max(0.01, Math.min(100, prev.timeZoom * zoomFactor))
         const newPriceZoom = Math.max(0.01, Math.min(100, prev.priceZoom * zoomFactor))
         
-        // Calculate focal point in chart coordinates
+        // Calculate focal point in chart coordinates using exact crosshair position
         const chartHeight = canvas.offsetHeight - 100
         const spacing = 12 // Base spacing
         
-        // Time focal point (horizontal)
+        // Time focal point (horizontal) - where vertical crosshair line is
         const timePositionInChart = x - 50 + prev.timeOffset
         const timeFocalPoint = timePositionInChart / (spacing * prev.timeZoom)
         
-        // Price focal point (vertical) 
+        // Price focal point (vertical) - where horizontal crosshair line is
         const pricePositionInChart = y - 50 + prev.priceOffset
         const priceFocalPoint = pricePositionInChart / (chartHeight * prev.priceZoom)
         
-        // Calculate new offsets to maintain focal point
+        // Calculate new offsets to maintain focal point at exact crosshair intersection
         const newTimePosition = timeFocalPoint * spacing * newTimeZoom
         const newTimeOffset = newTimePosition - (x - 50)
         
@@ -154,7 +153,7 @@ export const useChartInteractions = ({
         }
       })
     }
-  }, [navigationMode, calculateCandleHeight, setViewportState, viewportState.timeZoom, viewportState.priceZoom, viewportState.timeOffset, viewportState.priceOffset])
+  }, [navigationMode, setViewportState])
 
   /**
    * Detect if mouse is over Y-axis (price axis) or X-axis (time axis)
