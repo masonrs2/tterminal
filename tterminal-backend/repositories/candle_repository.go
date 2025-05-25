@@ -208,9 +208,9 @@ func (r *CandleRepository) BulkCreate(ctx context.Context, candles []models.Cand
 // GetOptimizedCandleData returns minimal candle data for ultra-fast frontend rendering
 func (r *CandleRepository) GetOptimizedCandleData(ctx context.Context, symbol, interval string, limit int) ([]models.OptimizedCandle, error) {
 	query := `
-		SELECT open_time, open, high, low, close, volume
+		SELECT open_time, open, high, low, close, volume, taker_buy_base_asset_volume
 		FROM (
-			SELECT open_time, open, high, low, close, volume
+			SELECT open_time, open, high, low, close, volume, taker_buy_base_asset_volume
 			FROM candles
 			WHERE symbol = $1 AND interval = $2
 			ORDER BY open_time DESC
@@ -230,21 +230,27 @@ func (r *CandleRepository) GetOptimizedCandleData(ctx context.Context, symbol, i
 
 	for rows.Next() {
 		var openTime time.Time
-		var open, high, low, close, volume string
+		var open, high, low, close, volume, takerBuyVolume string
 
-		err := rows.Scan(&openTime, &open, &high, &low, &close, &volume)
+		err := rows.Scan(&openTime, &open, &high, &low, &close, &volume, &takerBuyVolume)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan optimized candle: %w", err)
 		}
 
-		// Convert to optimized format
+		// Convert to optimized format with real buy/sell volume data
+		totalVolume := models.ParseFloat(volume)
+		buyVolume := models.ParseFloat(takerBuyVolume)
+		sellVolume := totalVolume - buyVolume
+
 		candles = append(candles, models.OptimizedCandle{
-			T: openTime.UnixMilli(),
-			O: models.ParseFloat(open),
-			H: models.ParseFloat(high),
-			L: models.ParseFloat(low),
-			C: models.ParseFloat(close),
-			V: models.ParseFloat(volume),
+			T:  openTime.UnixMilli(),
+			O:  models.ParseFloat(open),
+			H:  models.ParseFloat(high),
+			L:  models.ParseFloat(low),
+			C:  models.ParseFloat(close),
+			V:  totalVolume,
+			BV: buyVolume,
+			SV: sellVolume,
 		})
 	}
 

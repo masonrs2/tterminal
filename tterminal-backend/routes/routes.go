@@ -123,6 +123,7 @@ func SetupRoutes(e *echo.Echo, db *database.DB, cfg *config.Config) {
 	ws.GET("/depth/:symbol", websocketController.GetDepthData)           // Order book depth
 	ws.GET("/trades/:symbol", websocketController.GetRecentTrades)       // Recent trades
 	ws.GET("/kline/:symbol/:interval", websocketController.GetKlineData) // Kline data
+	ws.GET("/volume/:symbol", websocketController.GetVolumeData)         // Real-time buy/sell volume
 
 	// NEW: Futures-specific endpoints for derivatives trading
 	ws.GET("/markprice/:symbol", websocketController.GetMarkPriceData)         // Futures mark price

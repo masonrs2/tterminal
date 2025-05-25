@@ -109,13 +109,14 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
           return x >= -candleWidth && x <= chartWidth
         })
         
-        console.log(`📊 Processing ${selectedCandles.length} VISIBLE candles (matching MainChart logic) for dynamic volume profile`)
+        console.log(`Processing ${selectedCandles.length} VISIBLE candles (matching MainChart logic) for dynamic volume profile`)
       } else {
         // FIXED MODE: Use the most recent N candles
         const candleCount = fixedCandleCount || 1000
-        selectedCandles = candles.slice(-candleCount) // Take the last N candles
+        const startIndex = Math.max(0, candles.length - candleCount)
+        selectedCandles = candles.slice(startIndex)
         
-        console.log(`📊 Processing ${selectedCandles.length} FIXED candles (last ${candleCount}) for volume profile`)
+        console.log(`Processing ${selectedCandles.length} FIXED candles (last ${candleCount}) for volume profile`)
       }
       
       if (selectedCandles.length === 0) {
@@ -138,7 +139,7 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
       }
 
       const actualPriceRange = maxPrice - minPrice
-      console.log(`💹 EXACT price range: ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)} (${selectedCandles.length} ${rangeMode} candles)`)
+      console.log(`EXACT price range: ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)} (${selectedCandles.length} ${rangeMode} candles)`)
 
       // FIXED: Use proper price levels that cover the full range with specified row count
       // This ensures we have volume bars at every price level without gaps
@@ -177,13 +178,9 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
         const isBullish = candle.close > candle.open
         const bodySize = Math.abs(candle.close - candle.open)
         
-        // More sophisticated buy/sell estimation
-        const buyRatio = isBullish ? 
-          0.6 + (bodySize / Math.max(candleRange, 0.01)) * 0.3 : // Bullish: 60-90% buy
-          0.3 - (bodySize / Math.max(candleRange, 0.01)) * 0.2   // Bearish: 10-30% buy
-        
-        const buyVolume = candle.volume * buyRatio
-        const sellVolume = candle.volume * (1 - buyRatio)
+        // Use REAL buy/sell volume data from backend instead of estimation
+        const buyVolume = candle.buyVolume || 0   // Real data from backend
+        const sellVolume = candle.sellVolume || 0 // Real data from backend
         const delta = buyVolume - sellVolume
 
         totalVolume += candle.volume
@@ -305,14 +302,12 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
         }
       }
 
-      console.log(`✅ Accurate volume profile: ${levels.length} price levels (${rowCount} buckets), ${singlePrints.length} single prints, POC: ${pocLevel.price.toFixed(2)}, Total: ${totalVolume.toFixed(0)}`)
+      console.log('Dynamic volume profile loaded successfully')
       
-      // DEBUG: Log sample of price levels for troubleshooting
-      if (levels.length > 0) {
-        const sampleLevels = levels.slice(0, 10).map(l => `${l.price.toFixed(1)}:${l.totalVolume.toFixed(0)}`).join(', ')
-        console.log(`📊 Sample price levels: ${sampleLevels}${levels.length > 10 ? '...' : ''}`)
-        console.log(`📊 Price range: ${minPrice.toFixed(1)} - ${maxPrice.toFixed(1)} (step: ${priceStep.toFixed(2)}, ${levels.length}/${rowCount} levels)`)
-      }
+      // Debug: Show sample price levels
+      const sampleLevels = levels.slice(0, 5).map(l => `${l.price.toFixed(1)}:${l.totalVolume.toFixed(0)}`).join(', ')
+      console.log(`Sample price levels: ${sampleLevels}${levels.length > 10 ? '...' : ''}`)
+      console.log(`Price range: ${minPrice.toFixed(1)} - ${maxPrice.toFixed(1)} (step: ${priceStep.toFixed(2)}, ${levels.length}/${rowCount} levels)`)
 
       return {
         levels, // All levels with significant volume
@@ -424,11 +419,11 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
   useEffect(() => {
     const loadHistoricalData = () => {
       if (!candleData || candleData.length === 0) {
-        console.log('⏳ Waiting for candle data...')
+        console.log('Waiting for candle data...')
         return
       }
 
-      console.log(`🔄 Loading DYNAMIC volume profile for ${symbol} with ${candleData.length} candles (viewport: ${viewportState.timeOffset.toFixed(0)}, zoom: ${viewportState.timeZoom.toFixed(2)})`)
+      console.log(`Loading DYNAMIC volume profile for ${symbol} with ${candleData.length} candles (viewport: ${viewportState.timeOffset.toFixed(0)}, zoom: ${viewportState.timeZoom.toFixed(2)})`)
       
       setState(prev => ({ ...prev, isLoading: true, error: null }))
 
@@ -450,7 +445,7 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
             error: null,
             lastUpdate: Date.now(),
           })
-          console.log('✅ Dynamic volume profile loaded successfully')
+          console.log('Dynamic volume profile loaded successfully')
         } else {
           setState(prev => ({
             ...prev,

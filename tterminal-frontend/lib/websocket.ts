@@ -271,7 +271,7 @@ class TradingWebSocketService {
 
       // Log raw data in development for debugging
       if (process.env.NODE_ENV === 'development') {
-        // console.log('📨 Raw WebSocket data:', cleanData.substring(0, 200) + (cleanData.length > 200 ? '...' : ''))
+        // console.log('Raw WebSocket data:', cleanData.substring(0, 200) + (cleanData.length > 200 ? '...' : ''))
       }
 
       // Check if data contains multiple JSON objects (newline separated)
@@ -286,7 +286,7 @@ class TradingWebSocketService {
 
     } catch (error) {
       console.error('Failed to process WebSocket message:', error)
-      console.error('📄 Raw data that caused error:', data)
+      console.error('Raw data that caused error:', data)
     }
   }
 
@@ -371,7 +371,7 @@ class TradingWebSocketService {
       }
     } catch (error) {
       console.error('Failed to parse individual JSON message:', error)
-      console.error('📄 Message data:', data)
+      console.error('Message data:', data)
       
       // Try to extract partial JSON if possible
       try {

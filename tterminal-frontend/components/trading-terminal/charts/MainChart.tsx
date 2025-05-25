@@ -362,6 +362,7 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
     const { finalMax, finalMin, priceRange } = calculateStablePriceRange()
     
     const chartHeight = canvas.offsetHeight - 100
+    const spacing = 12 * viewportState.timeZoom // Move spacing to top level
     
     // Calculate line end position for consistent use across components (where price axis begins)
     const lineEndX = canvas.offsetWidth - (showOrderbook ? 200 : 80)
@@ -395,27 +396,115 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
       ctx.globalAlpha = 1
     }
 
-    // Draw volume bars in background
-    const maxVolume = Math.max(...candleData.map((c) => c.volume))
-    const spacing = 12 * viewportState.timeZoom
-    candleData.forEach((candle, index) => {
-      const x = index * spacing + 50 - viewportState.timeOffset
-      if (x < -8 || x > canvas.offsetWidth) return
+    // Draw volume bars in background (only if Volume indicator is active)
+    if (activeIndicators.includes("Volume")) {
+      const maxVolume = Math.max(...candleData.map((c) => c.volume))
+      
+      // Debug logging for volume settings (development only)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Volume settings:', indicatorSettings.volume)
+      }
+      
+      candleData.forEach((candle, index) => {
+        const x = index * spacing + 50 - viewportState.timeOffset
+        if (x < -8 || x > canvas.offsetWidth) return
 
-      const volumeHeight = (candle.volume / maxVolume) * (canvas.offsetHeight * 0.3)
-      const buyRatio = candle.close > candle.open ? 0.6 : 0.4
-      const sellRatio = 1 - buyRatio
+        // Use volume settings for rendering
+        const volumeSettings = indicatorSettings.volume || {
+          showBuyVolume: true,
+          showSellVolume: true,
+          showDelta: true,
+          barType: "total",
+          buyColor: "#00ff88",
+          sellColor: "#ff4444",
+          deltaColor: "#ffffff",
+          opacity: 0.4,
+          barHeight: 0.3,
+          position: "bottom"
+        }
+        
+        // Ensure minimum bar height for visibility
+        const minBarHeight = 0.1
+        const effectiveBarHeight = Math.max(minBarHeight, volumeSettings.barHeight)
+        const maxVolumeHeight = canvas.offsetHeight * effectiveBarHeight
+        const volumeHeight = Math.max(2, (candle.volume / maxVolume) * maxVolumeHeight) // Minimum 2px height
+        
+        // Check volume bar type from settings
+        if (volumeSettings.barType === 'delta') {
+          // Delta mode: Show total volume in single color (delta color)
+          const barWidth = Math.max(3, 8 * viewportState.timeZoom)
+          const baseY = volumeSettings.position === 'top' ? 50 : canvas.offsetHeight
+          
+          // Parse delta color and add opacity
+          const deltaColor = volumeSettings.deltaColor
+          const deltaR = parseInt(deltaColor.slice(1, 3), 16)
+          const deltaG = parseInt(deltaColor.slice(3, 5), 16)
+          const deltaB = parseInt(deltaColor.slice(5, 7), 16)
+          ctx.fillStyle = `rgba(${deltaR}, ${deltaG}, ${deltaB}, ${volumeSettings.opacity})`
+          
+          if (volumeSettings.position === 'top') {
+            ctx.fillRect(x, baseY, barWidth, volumeHeight)
+          } else {
+            ctx.fillRect(x, baseY - volumeHeight, barWidth, volumeHeight)
+          }
+        } else {
+          // Total mode: Show buy/sell volumes using REAL backend data
+          // Use real buy/sell volume data from backend instead of estimation
+          
+          // Get real buy/sell volumes from backend data
+          const realBuyVolume = candle.buyVolume || 0
+          const realSellVolume = candle.sellVolume || 0
+          const totalRealVolume = realBuyVolume + realSellVolume
+          
+          // Calculate ratios based on REAL data (not estimation)
+          let buyRatio = 0.5 // Default to 50/50 if no data
+          let sellRatio = 0.5
+          
+          if (totalRealVolume > 0) {
+            buyRatio = realBuyVolume / totalRealVolume
+            sellRatio = realSellVolume / totalRealVolume
+          }
 
-      const buyHeight = volumeHeight * buyRatio
-      const sellHeight = volumeHeight * sellRatio
+          const buyHeight = Math.max(1, volumeHeight * buyRatio) // Minimum 1px
+          const sellHeight = Math.max(1, volumeHeight * sellRatio) // Minimum 1px
+          const barWidth = Math.max(3, 8 * viewportState.timeZoom) // Ensure minimum width of 3px
 
-      // Volume bars
-      ctx.fillStyle = "rgba(255, 68, 68, 0.4)"
-      ctx.fillRect(x, canvas.offsetHeight - sellHeight, 8 * viewportState.timeZoom, sellHeight)
+          // Position bars based on settings (bottom or top)
+          const baseY = volumeSettings.position === 'top' ? 50 : canvas.offsetHeight
 
-      ctx.fillStyle = "rgba(0, 255, 136, 0.4)"
-      ctx.fillRect(x, canvas.offsetHeight - volumeHeight, 8 * viewportState.timeZoom, buyHeight)
-    })
+          // Only render if the respective volume types are enabled
+          if (volumeSettings.showSellVolume) {
+            // Parse hex color and add opacity
+            const sellColor = volumeSettings.sellColor
+            const sellR = parseInt(sellColor.slice(1, 3), 16)
+            const sellG = parseInt(sellColor.slice(3, 5), 16)
+            const sellB = parseInt(sellColor.slice(5, 7), 16)
+            ctx.fillStyle = `rgba(${sellR}, ${sellG}, ${sellB}, ${volumeSettings.opacity})`
+            
+            if (volumeSettings.position === 'top') {
+              ctx.fillRect(x, baseY, barWidth, sellHeight)
+            } else {
+              ctx.fillRect(x, baseY - sellHeight, barWidth, sellHeight)
+            }
+          }
+
+          if (volumeSettings.showBuyVolume) {
+            // Parse hex color and add opacity
+            const buyColor = volumeSettings.buyColor
+            const buyR = parseInt(buyColor.slice(1, 3), 16)
+            const buyG = parseInt(buyColor.slice(3, 5), 16)
+            const buyB = parseInt(buyColor.slice(5, 7), 16)
+            ctx.fillStyle = `rgba(${buyR}, ${buyG}, ${buyB}, ${volumeSettings.opacity})`
+            
+            if (volumeSettings.position === 'top') {
+              ctx.fillRect(x, baseY + sellHeight, barWidth, buyHeight)
+            } else {
+              ctx.fillRect(x, baseY - volumeHeight, barWidth, buyHeight)
+            }
+          }
+        }
+      })
+    }
 
     // Draw heatmap overlay (without text clutter)
     if (activeIndicators.includes("Heatmap")) {

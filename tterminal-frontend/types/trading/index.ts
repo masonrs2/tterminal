@@ -10,6 +10,8 @@ export interface CandleData {
   low: number
   close: number
   volume: number
+  buyVolume: number  // Real buy volume from backend (taker buy base asset volume)
+  sellVolume: number // Real sell volume from backend (total - buy volume)
 }
 
 export interface MousePosition {
@@ -121,6 +123,20 @@ export interface IndicatorSettings {
     showSinglePrints: boolean
     singlePrintColor: string
     singlePrintOpacity: number
+  }
+  volume: {
+    showBuyVolume: boolean
+    showSellVolume: boolean
+    showDelta: boolean
+    showPercentage: boolean
+    showTotalVolume: boolean
+    barType: 'total' | 'delta'
+    buyColor: string
+    sellColor: string
+    deltaColor: string
+    opacity: number
+    barHeight: number
+    position: 'bottom' | 'top'
   }
   liquidations: {
     threshold: number

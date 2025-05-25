@@ -22,6 +22,8 @@ interface BackendCandleResponse {
     l: number // low
     c: number // close
     v: number // volume
+    bv: number // buy volume
+    sv: number // sell volume
   }>
   n: number // count
   f: number // first timestamp
@@ -225,42 +227,32 @@ export class TradingAPI {
     return httpClient.get('/symbols')
   }
 
-  // Get candle data using ultra-fast aggregation endpoint
+  // Get candle data with real buy/sell volume from backend
   static async getCandles(
     symbol: string,
-    interval: string = '1m',
+    interval: string,
     limit: number = 500
   ): Promise<CandleData[]> {
-    const response: BackendCandleResponse = await httpClient.get(
-      `/aggregation/candles/${symbol}/${interval}?limit=${limit}`
-    )
+    try {
+      // Use the aggregation endpoint that provides real buy/sell volume data
+      const response: BackendCandleResponse = await httpClient.get(
+        `/aggregation/candles/${symbol}/${interval}?limit=${limit}`
+      )
 
-    const candles = response.d.map(candle => ({
-      timestamp: candle.t,
-      open: candle.o,
-      high: candle.h,
-      low: candle.l,
-      close: candle.c,
-      volume: candle.v,
-    }))
-
-    // ESSENTIAL API DATA VERIFICATION
-    if (candles.length > 0) {
-      const now = Date.now()
-      const timeSpan = (candles[candles.length - 1].timestamp - candles[0].timestamp) / (1000 * 60 * 60)
-      const historical = candles.filter(c => now - c.timestamp >= 6 * 60 * 60 * 1000).length
-      
-      console.log(`API ${symbol}/${interval}:`, {
-        received: candles.length,
-        requested: limit,
-        timeSpan: `${timeSpan.toFixed(1)}h`,
-        historical
-      })
-    } else {
-      console.warn(`API: No candles received for ${symbol}/${interval}`)
+      return response.d.map(candle => ({
+        timestamp: candle.t,
+        open: candle.o,
+        high: candle.h,
+        low: candle.l,
+        close: candle.c,
+        volume: candle.v,
+        buyVolume: candle.bv,   // Real buy volume from backend
+        sellVolume: candle.sv,  // Real sell volume from backend
+      }))
+    } catch (error) {
+      console.error('Failed to fetch candles:', error)
+      throw error
     }
-
-    return candles
   }
 
   // Get latest candle for real-time updates
@@ -271,7 +263,7 @@ export class TradingAPI {
     try {
       // Add timestamp to prevent any caching and ensure fresh data
       const timestamp = Date.now()
-      const response: { candle: { t: number, o: number, h: number, l: number, c: number, v: number }, interval: string, symbol: string } = await httpClient.get(
+      const response: { candle: { t: number, o: number, h: number, l: number, c: number, v: number, bv: number, sv: number }, interval: string, symbol: string } = await httpClient.get(
         `/candles/${symbol}/latest?interval=${interval}&_t=${timestamp}`,
         false // No cache for latest data
       )
@@ -285,6 +277,8 @@ export class TradingAPI {
           low: candle.l,
           close: candle.c,
           volume: candle.v,
+          buyVolume: candle.bv || 0,   // Real buy volume from backend
+          sellVolume: candle.sv || 0,  // Real sell volume from backend
         }
       }
       return null
@@ -304,25 +298,15 @@ export class TradingAPI {
         `/aggregation/volume-profile/${symbol}?hours=${hours}`
       )
 
-      return response.l.map(level => {
-        // For now, estimate buy/sell split based on volume and price position
-        // TODO: Backend should provide actual buy/sell volume data
-        const totalVolume = level.v
-        const buyRatio = 0.4 + (Math.random() * 0.2) // 40-60% buy ratio with some randomness
-        const buyVolume = totalVolume * buyRatio
-        const sellVolume = totalVolume * (1 - buyRatio)
-        const delta = buyVolume - sellVolume
-        
-        return {
-          price: level.p,
-          volume: totalVolume,
-          buyVolume,
-          sellVolume,
-          delta,
-          trades: Math.floor(totalVolume / 10) + 1, // Estimate trade count
-          type: delta > 0 ? 'buy' : delta < 0 ? 'sell' : 'neutral' as 'buy' | 'sell' | 'neutral',
-        }
-      })
+      return response.l.map(level => ({
+        price: level.p,
+        volume: level.v,
+        buyVolume: level.v * 0.5,    // TODO: Backend should provide real buy/sell breakdown
+        sellVolume: level.v * 0.5,   // TODO: Backend should provide real buy/sell breakdown
+        delta: 0,                    // TODO: Backend should provide real delta
+        trades: Math.floor(level.v / 10) + 1, // Estimate trade count
+        type: 'neutral' as 'buy' | 'sell' | 'neutral',
+      }))
     } catch (error) {
       console.warn('Failed to fetch volume profile:', error)
       return []
@@ -400,53 +384,32 @@ export class TradingAPI {
         candles: {},
       }
 
-      // Convert candle data
+      // Convert candles for each interval
       for (const [interval, candleResponse] of Object.entries(response.candles)) {
-        result.candles[interval] = candleResponse.d.map(candle => ({
+        const candleData = (candleResponse as BackendCandleResponse).d || [] // Extract the 'd' array from CandleResponse
+        result.candles[interval] = candleData.map((candle: any) => ({
           timestamp: candle.t,
           open: candle.o,
           high: candle.h,
           low: candle.l,
           close: candle.c,
           volume: candle.v,
+          buyVolume: candle.bv || 0,   // Real buy volume from backend
+          sellVolume: candle.sv || 0,  // Real sell volume from backend
         }))
-        
-        // ESSENTIAL MULTI-DATA VERIFICATION
-        const intervalCandles = result.candles[interval]
-        if (intervalCandles.length > 0) {
-          const now = Date.now()
-          const timeSpan = (intervalCandles[intervalCandles.length - 1].timestamp - intervalCandles[0].timestamp) / (1000 * 60 * 60)
-          const historical = intervalCandles.filter(c => now - c.timestamp >= 6 * 60 * 60 * 1000).length
-          
-          console.log(`Multi ${interval}:`, {
-            received: intervalCandles.length,
-            timeSpan: `${timeSpan.toFixed(1)}h`,
-            historical
-          })
-        }
       }
 
       // Convert volume profile
       if (response.volume_profile) {
-        result.volumeProfile = response.volume_profile.l.map(level => {
-          // For now, estimate buy/sell split based on volume and price position
-          // TODO: Backend should provide actual buy/sell volume data
-          const totalVolume = level.v
-          const buyRatio = 0.4 + (Math.random() * 0.2) // 40-60% buy ratio with some randomness
-          const buyVolume = totalVolume * buyRatio
-          const sellVolume = totalVolume * (1 - buyRatio)
-          const delta = buyVolume - sellVolume
-          
-          return {
-            price: level.p,
-            volume: totalVolume,
-            buyVolume,
-            sellVolume,
-            delta,
-            trades: Math.floor(totalVolume / 10) + 1, // Estimate trade count
-            type: delta > 0 ? 'buy' : delta < 0 ? 'sell' : 'neutral' as 'buy' | 'sell' | 'neutral',
-          }
-        })
+        result.volumeProfile = response.volume_profile.l.map(level => ({
+          price: level.p,
+          volume: level.v,
+          buyVolume: level.v * 0.5,    // TODO: Backend should provide real buy/sell breakdown
+          sellVolume: level.v * 0.5,   // TODO: Backend should provide real buy/sell breakdown
+          delta: 0,                    // TODO: Backend should provide real delta
+          trades: Math.floor(level.v / 10) + 1, // Estimate trade count
+          type: 'neutral' as 'buy' | 'sell' | 'neutral',
+        }))
       }
 
       // Convert liquidations
@@ -554,6 +517,8 @@ export class TradingAPI {
       low: candle.l,
       close: candle.c,
       volume: candle.v,
+      buyVolume: candle.bv || 0,   // Real buy volume from backend
+      sellVolume: candle.sv || 0,  // Real sell volume from backend
     }))
 
     console.log(`Fresh data: ${candles.length} candles for ${symbol}/${interval}`)

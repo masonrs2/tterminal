@@ -42,6 +42,7 @@ import HighPerformanceOrderbook from './components/orderbook'
 import type { CandleData } from './types/trading'
 import { VolumeProfile } from './components/trading-terminal/charts/VolumeProfile'
 import { VPVRSettings } from './components/trading-terminal/controls/VPVRSettings'
+import { VolumeSettings } from './components/trading-terminal/controls/VolumeSettings'
 
 export default function TradingTerminal() {
   // State for dynamic symbol selection (can be expanded to support multiple symbols)
@@ -50,6 +51,48 @@ export default function TradingTerminal() {
   // Centralized state management
   const state = useTradingState()
   
+  // Real-time volume data state (moved after state initialization)
+  const [realVolumeData, setRealVolumeData] = useState<{
+    buyVolume: number
+    sellVolume: number
+    delta: number
+    buyPercentage: number
+    sellPercentage: number
+  } | null>(null)
+
+  // Fetch real volume data from backend (moved after state initialization)
+  useEffect(() => {
+    const fetchVolumeData = async () => {
+      try {
+        const response = await fetch(`http://localhost:8080/api/v1/websocket/volume/BTCUSDT?interval=${state.selectedTimeframe}`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.current_candle) {
+            setRealVolumeData({
+              buyVolume: data.current_candle.buy_volume,
+              sellVolume: data.current_candle.sell_volume,
+              delta: data.current_candle.delta,
+              buyPercentage: data.current_candle.buy_percentage,
+              sellPercentage: data.current_candle.sell_percentage
+            })
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch volume data:', error)
+      }
+    }
+
+    // Only fetch if Volume indicator is active
+    if (state.activeIndicators.includes("Volume")) {
+      // Initial fetch
+      fetchVolumeData()
+
+      // Update every 5 seconds
+      const interval = setInterval(fetchVolumeData, 5000)
+      return () => clearInterval(interval)
+    }
+  }, [state.selectedTimeframe, state.activeIndicators]) // Dependencies: timeframe and active indicators
+
   // Real-time WebSocket integration for live price updates
   const websocketPrice = useWebSocketPrice({ 
     symbol: selectedSymbol,
@@ -99,6 +142,7 @@ export default function TradingTerminal() {
   const settingsDropdownRef = useRef<HTMLDivElement>(null)
   const chartSettingsPanelRef = useRef<HTMLDivElement>(null)
   const vpvrSettingsPanelRef = useRef<HTMLDivElement>(null)
+  const volumeSettingsPanelRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const cvdCanvasRef = useRef<HTMLCanvasElement>(null)
   const liquidationsCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -650,6 +694,9 @@ export default function TradingTerminal() {
       if (vpvrSettingsPanelRef.current && !vpvrSettingsPanelRef.current.contains(event.target as Node) && state.openSettingsPanel === "vpvr") {
         state.setOpenSettingsPanel(null)
       }
+      if (volumeSettingsPanelRef.current && !volumeSettingsPanelRef.current.contains(event.target as Node) && state.openSettingsPanel === "volume") {
+        state.setOpenSettingsPanel(null)
+      }
     }
 
     document.addEventListener("mousedown", handleClickOutside)
@@ -949,7 +996,7 @@ export default function TradingTerminal() {
   // Log candle changes for debugging
   useEffect(() => {
     if (lastCandleData && process.env.NODE_ENV === 'development') {
-      console.log(`🕯️ Last candle data changed:`, lastCandleData)
+      console.log('Last candle data changed:', lastCandleData)
     }
   }, [lastCandleData])
 
@@ -1045,7 +1092,7 @@ export default function TradingTerminal() {
           {process.env.NODE_ENV === 'development' && (
             <button
               onClick={async () => {
-                console.log('🧪 Testing backend endpoints...')
+                console.log('Testing backend endpoints...')
                 try {
                   // Test current timeframe
                   const response = await fetch(`http://localhost:8080/api/v1/aggregation/candles/BTCUSDT/${state.selectedTimeframe}?limit=5`)
@@ -1109,10 +1156,10 @@ export default function TradingTerminal() {
         <div className="flex-1 flex flex-col relative min-h-0" style={{ width: chartAreaWidth }}>
           
           {/* Indicator Info Overlay - Exact UX Design Match */}
-          <div className="absolute top-2 left-4 z-30 space-y-1 text-xs font-mono">
-            <div className="text-xs font-mono">
+          <div className="absolute top-2 left-4 z-30 space-y-1 text-xs font-light">
+            <div className="text-xs font-light">
               <span 
-                className="cursor-pointer hover:text-blue-300 hover:bg-blue-900/20 px-1 rounded transition-colors text-xs font-mono"
+                className="cursor-pointer hover:text-blue-300 hover:bg-blue-900/20 px-1 rounded transition-colors text-xs font-light"
                 onClick={(e) => {
                   e.stopPropagation()
                   state.setShowChartSettings(!state.showChartSettings)
@@ -1121,28 +1168,28 @@ export default function TradingTerminal() {
               >
                 binancef btcusdt
               </span>
-              <span className="text-xs font-mono"> - </span>
+              <span className="text-xs font-light"> - </span>
               {/* Real-time OHLC data - matching exact format from image */}
               {tradingData.candles.length > 0 ? (
-                <span className="text-xs font-mono">
+                <span className="text-xs font-light">
                   {(() => {
                     const currentCandle = tradingData.candles[tradingData.candles.length - 1]
                     return (
                       <>
-                        <span className="text-xs font-mono">O {currentCandle.open.toFixed(2)} </span>
-                        <span className="text-xs font-mono">H {currentCandle.high.toFixed(2)} </span>
-                        <span className="text-xs font-mono">L {currentCandle.low.toFixed(2)} </span>
-                        <span className="text-xs font-mono">C {currentCandle.close.toFixed(2)} </span>
-                        <span className="text-xs font-mono">D {Math.round(currentCandle.volume)}</span>
+                        <span className="text-xs font-light">O {currentCandle.open.toFixed(2)} </span>
+                        <span className="text-xs font-light">H {currentCandle.high.toFixed(2)} </span>
+                        <span className="text-xs font-light">L {currentCandle.low.toFixed(2)} </span>
+                        <span className="text-xs font-light">C {currentCandle.close.toFixed(2)} </span>
+                        <span className="text-xs font-light">D {Math.round(currentCandle.volume)}</span>
                       </>
                     )
                   })()}
                 </span>
               ) : (
-                <span className="text-xs font-mono">O 108611.50 H 108886.50 L 107950.00 C 108666.60 D -3483.00</span>
+                <span className="text-xs font-light">O 108611.50 H 108886.50 L 107950.00 C 108666.60 D -3483.00</span>
               )}
               <span
-                className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 text-xs font-mono"
+                className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 text-xs font-light"
                 onClick={(e) => {
                   e.stopPropagation()
                   removeIndicator("main")
@@ -1152,11 +1199,11 @@ export default function TradingTerminal() {
               </span>
             </div>
 
-            {/* Volume indicator - exact match to image */}
+            {/* Volume indicator - real-time data with settings */}
             {state.activeIndicators.includes("Volume") && (
-              <div className="text-xs font-mono">
+              <div className="text-xs font-light">
                 <span
-                  className={`cursor-pointer font-mono ${state.hoveredIndicator === "Volume" ? "bg-blue-800" : ""}`}
+                  className={`cursor-pointer font-light ${state.hoveredIndicator === "Volume" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("Volume")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
                   onClick={(e) => {
@@ -1164,10 +1211,59 @@ export default function TradingTerminal() {
                     openIndicatorSettings("volume")
                   }}
                 >
-                  Volume sell 5307.37 buy 4113.91
+                  {(() => {
+                    // Use hovered candle data if available, otherwise use current (last) candle
+                    const targetCandle = state.hoveredCandle || tradingData.candles[tradingData.candles.length - 1]
+                    if (!targetCandle) return "Volume: No data"
+                    
+                    // Use REAL volume data from backend instead of estimation
+                    const displayBuyVolume = targetCandle.buyVolume || 0
+                    const displaySellVolume = targetCandle.sellVolume || 0
+                    const displayDelta = displayBuyVolume - displaySellVolume
+
+                    // Format display based on settings
+                    const settings = state.indicatorSettings.volume || {
+                      showBuyVolume: true,
+                      showSellVolume: true,
+                      showDelta: true,
+                      showPercentage: false,
+                      showTotalVolume: false,
+                      barType: "total"
+                    }
+                    let displayText = "Volume"
+                    
+                    // Show total volume if enabled
+                    if (settings.showTotalVolume) {
+                      const totalVolume = displayBuyVolume + displaySellVolume
+                      displayText += ` total ${totalVolume.toFixed(2)}`
+                    }
+                    
+                    // Show individual buy/sell volumes
+                    if (settings.showSellVolume) {
+                      displayText += ` sell ${displaySellVolume.toFixed(2)}`
+                    }
+                    if (settings.showBuyVolume) {
+                      displayText += ` buy ${displayBuyVolume.toFixed(2)}`
+                    }
+                    
+                    // Show delta
+                    if (settings.showDelta) {
+                      const deltaSign = displayDelta >= 0 ? "+" : ""
+                      displayText += ` Δ${deltaSign}${displayDelta.toFixed(2)}`
+                    }
+                    
+                    // Show percentages
+                    if (settings.showPercentage) {
+                      const buyPercentage = (displayBuyVolume / (displayBuyVolume + displaySellVolume)) * 100
+                      const sellPercentage = (displaySellVolume / (displayBuyVolume + displaySellVolume)) * 100
+                      displayText += ` (${buyPercentage.toFixed(1)}%/${sellPercentage.toFixed(1)}%)`
+                    }
+                    
+                    return displayText
+                  })()}
                 </span>
                 <span
-                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 font-mono"
+                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 font-light"
                   onClick={(e) => {
                     e.stopPropagation()
                     removeIndicator("Volume")
@@ -1180,9 +1276,9 @@ export default function TradingTerminal() {
 
             {/* VPVR indicator - exact match to image */}
             {state.activeIndicators.includes("VPVR") && (
-              <div className="text-xs font-mono">
+              <div className="text-xs font-light">
                 <span
-                  className={`cursor-pointer font-mono ${state.hoveredIndicator === "VPVR" ? "bg-blue-800" : ""}`}
+                  className={`cursor-pointer font-light ${state.hoveredIndicator === "VPVR" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("VPVR")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
                   onClick={(e) => {
@@ -1193,7 +1289,7 @@ export default function TradingTerminal() {
                   VPVR
                 </span>
                 <span
-                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 font-mono"
+                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 font-light"
                   onClick={(e) => {
                     e.stopPropagation()
                     removeIndicator("VPVR")
@@ -1206,9 +1302,9 @@ export default function TradingTerminal() {
 
             {/* Heatmap indicator - exact match to image */}
             {state.activeIndicators.includes("Heatmap") && (
-              <div className="text-xs font-mono">
+              <div className="text-xs font-light">
                 <span
-                  className={`cursor-pointer font-mono ${state.hoveredIndicator === "Heatmap" ? "bg-blue-800" : ""}`}
+                  className={`cursor-pointer font-light ${state.hoveredIndicator === "Heatmap" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("Heatmap")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
                   onClick={(e) => {
@@ -1219,7 +1315,7 @@ export default function TradingTerminal() {
                   Heatmap binancef
                 </span>
                 <span
-                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 font-mono"
+                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 font-light"
                   onClick={(e) => {
                     e.stopPropagation()
                     removeIndicator("Heatmap")
@@ -1294,6 +1390,34 @@ export default function TradingTerminal() {
               })
             }}
             initialPosition={{ x: 400, y: 100 }}
+          />
+
+          {/* Volume Settings Panel */}
+          <VolumeSettings
+            ref={volumeSettingsPanelRef}
+            isOpen={state.openSettingsPanel === "volume"}
+            onClose={() => state.setOpenSettingsPanel(null)}
+            settings={{
+              showBuyVolume: state.indicatorSettings.volume?.showBuyVolume ?? true,
+              showSellVolume: state.indicatorSettings.volume?.showSellVolume ?? true,
+              showDelta: state.indicatorSettings.volume?.showDelta ?? true,
+              showPercentage: state.indicatorSettings.volume?.showPercentage ?? false,
+              showTotalVolume: state.indicatorSettings.volume?.showTotalVolume ?? false,
+              barType: state.indicatorSettings.volume?.barType ?? "total",
+              buyColor: state.indicatorSettings.volume?.buyColor ?? "#00ff88",
+              sellColor: state.indicatorSettings.volume?.sellColor ?? "#ff4444",
+              deltaColor: state.indicatorSettings.volume?.deltaColor ?? "#ffffff",
+              opacity: state.indicatorSettings.volume?.opacity ?? 0.4,
+              barHeight: state.indicatorSettings.volume?.barHeight ?? 0.3,
+              position: state.indicatorSettings.volume?.position ?? "bottom",
+            }}
+            onSettingsChange={(newSettings) => {
+              // PERFORMANCE: Update all settings at once for instant rendering
+              Object.entries(newSettings).forEach(([key, value]) => {
+                updateIndicatorSetting("volume", key, value)
+              })
+            }}
+            initialPosition={{ x: 450, y: 150 }}
           />
 
           {/* Chart Settings Panel */}
@@ -1449,9 +1573,9 @@ export default function TradingTerminal() {
                 title="Drag to resize CVD chart"
               />
               <canvas ref={cvdCanvasRef} className="w-full h-full" style={{ width: "100%", height: "100%" }} />
-              <div className="absolute left-2 top-2 text-xs font-mono z-20">
+              <div className="absolute left-2 top-2 text-xs font-light z-20">
                 <span
-                  className={`cursor-pointer font-mono ${state.hoveredIndicator === "CVD" ? "bg-blue-800" : ""}`}
+                  className={`cursor-pointer font-light ${state.hoveredIndicator === "CVD" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("CVD")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
                   onClick={(e) => {
@@ -1462,7 +1586,7 @@ export default function TradingTerminal() {
                   CVD
                 </span>
                 <span
-                  className="ml-2 text-blue-400 cursor-pointer hover:text-blue-300 font-mono"
+                  className="ml-2 text-blue-400 cursor-pointer hover:text-blue-300 font-light"
                   onClick={(e) => {
                     e.stopPropagation()
                     removeIndicator("CVD")
@@ -1484,9 +1608,9 @@ export default function TradingTerminal() {
                 title="Drag to resize Liquidations chart"
               />
               <canvas ref={liquidationsCanvasRef} className="w-full h-full" style={{ width: "100%", height: "100%" }} />
-              <div className="absolute left-2 top-2 text-xs font-mono z-20">
+              <div className="absolute left-2 top-2 text-xs font-light z-20">
                 <span
-                  className={`cursor-pointer font-mono ${state.hoveredIndicator === "Liquidations" ? "bg-blue-800" : ""}`}
+                  className={`cursor-pointer font-light ${state.hoveredIndicator === "Liquidations" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("Liquidations")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
                   onClick={(e) => {
@@ -1497,7 +1621,7 @@ export default function TradingTerminal() {
                   Liquidations
                 </span>
                 <span
-                  className="ml-2 text-blue-400 cursor-pointer hover:text-blue-300 font-mono"
+                  className="ml-2 text-blue-400 cursor-pointer hover:text-blue-300 font-light"
                   onClick={(e) => {
                     e.stopPropagation()
                     removeIndicator("Liquidations")
@@ -1506,12 +1630,12 @@ export default function TradingTerminal() {
                   remove
                 </span>
               </div>
-              <div className="absolute right-2 bottom-2 text-xs font-mono z-20">
-                <div className="font-mono">40</div>
-                <div className="font-mono">30</div>
-                <div className="font-mono">20</div>
-                <div className="font-mono">10</div>
-                <div className="font-mono">0</div>
+              <div className="absolute right-2 bottom-2 text-xs font-light z-20">
+                <div className="font-light">40</div>
+                <div className="font-light">30</div>
+                <div className="font-light">20</div>
+                <div className="font-light">10</div>
+                <div className="font-light">0</div>
               </div>
             </div>
           )}

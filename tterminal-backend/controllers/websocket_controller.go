@@ -161,6 +161,80 @@ func (wsc *WebSocketController) GetRecentTrades(c echo.Context) error {
 	return c.JSON(200, response)
 }
 
+// GetVolumeData returns real-time buy/sell volume data for a symbol
+func (wsc *WebSocketController) GetVolumeData(c echo.Context) error {
+	symbol := strings.ToUpper(c.Param("symbol"))
+	if symbol == "" {
+		return c.JSON(400, map[string]string{"error": "Symbol parameter is required"})
+	}
+
+	// Get interval parameter (default to 1m if not provided for backward compatibility)
+	interval := c.QueryParam("interval")
+	if interval == "" {
+		interval = "1m"
+	}
+
+	// Get current kline data for the specified interval
+	klineData, exists := wsc.binanceStream.GetKlineData(symbol, interval)
+	if !exists {
+		return c.JSON(404, map[string]string{"error": "Volume data not found for symbol and interval"})
+	}
+
+	// Parse volume data from kline
+	totalVolume, _ := strconv.ParseFloat(klineData.Kline.Volume, 64)
+	takerBuyVolume, _ := strconv.ParseFloat(klineData.Kline.TakerBuyBaseVolume, 64)
+
+	// Calculate buy/sell volumes
+	buyVolume := takerBuyVolume
+	sellVolume := totalVolume - takerBuyVolume
+	delta := buyVolume - sellVolume
+
+	// Calculate percentages
+	buyPercentage := 0.0
+	sellPercentage := 0.0
+	if totalVolume > 0 {
+		buyPercentage = (buyVolume / totalVolume) * 100
+		sellPercentage = (sellVolume / totalVolume) * 100
+	}
+
+	// Get recent trades for additional context
+	recentTrades := wsc.binanceStream.GetRecentTrades(symbol, 10)
+
+	// Convert trades to simplified format
+	simplifiedTrades := make([]map[string]interface{}, 0, len(recentTrades))
+	for _, trade := range recentTrades {
+		price, _ := strconv.ParseFloat(trade.Price, 64)
+		quantity, _ := strconv.ParseFloat(trade.Quantity, 64)
+
+		simplifiedTrades = append(simplifiedTrades, map[string]interface{}{
+			"price":     price,
+			"quantity":  quantity,
+			"is_buy":    !trade.IsBuyerMaker, // Inverted: if buyer is maker, it's a sell order
+			"timestamp": trade.TradeTime,
+		})
+	}
+
+	response := map[string]interface{}{
+		"symbol": symbol,
+		"current_candle": map[string]interface{}{
+			"interval":        interval, // Use dynamic interval instead of hardcoded "1m"
+			"total_volume":    totalVolume,
+			"buy_volume":      buyVolume,
+			"sell_volume":     sellVolume,
+			"delta":           delta,
+			"buy_percentage":  buyPercentage,
+			"sell_percentage": sellPercentage,
+			"start_time":      klineData.Kline.StartTime,
+			"is_closed":       klineData.Kline.IsClosed,
+		},
+		"recent_trades": simplifiedTrades,
+		"timestamp":     time.Now().UnixMilli(),
+		"source":        "websocket_cache",
+	}
+
+	return c.JSON(200, response)
+}
+
 // GetKlineData returns the latest kline data for a symbol and interval
 func (wsc *WebSocketController) GetKlineData(c echo.Context) error {
 	symbol := strings.ToUpper(c.Param("symbol"))

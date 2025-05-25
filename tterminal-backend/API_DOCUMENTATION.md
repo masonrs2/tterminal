@@ -28,7 +28,7 @@ curl http://localhost:8080/api/v1/health
 ## Candles Endpoints
 
 ### GET /candles/:symbol
-Get optimized candle data for a symbol.
+Get optimized candle data for a symbol with **real buy/sell volume data**.
 
 **Parameters:**
 - `symbol` (path): Trading pair symbol (e.g., BTCUSDT)
@@ -52,7 +52,9 @@ curl "http://localhost:8080/api/v1/candles/BTCUSDT?interval=1m&limit=5"
       "h": 108903.8,
       "l": 108903.7,
       "c": 108903.8,
-      "v": 2.107
+      "v": 2.107,
+      "bv": 1.234,
+      "sv": 0.873
     }
   ],
   "n": 5,
@@ -70,18 +72,48 @@ curl "http://localhost:8080/api/v1/candles/BTCUSDT?interval=1m&limit=5"
   - `h`: High price
   - `l`: Low price
   - `c`: Close price
-  - `v`: Volume
+  - `v`: Total volume
+  - `bv`: **Buy volume (taker buy base asset volume)** - Real data from Binance
+  - `sv`: **Sell volume (total - buy volume)** - Real data from Binance
 - `n`: Number of candles
 - `f`: First timestamp
 - `l`: Last timestamp
 
 ### GET /candles/:symbol/latest
-Get the latest candle for a symbol.
+Get the latest candle for a symbol with **real buy/sell volume data**.
 
 **Request:**
 ```bash
 curl "http://localhost:8080/api/v1/candles/BTCUSDT/latest?interval=1m"
 ```
+
+**Response:**
+```json
+{
+  "symbol": "BTCUSDT",
+  "interval": "1m",
+  "candle": {
+    "t": 1748109720000,
+    "o": 108903.8,
+    "h": 108903.8,
+    "l": 108903.7,
+    "c": 108903.8,
+    "v": 2.107,
+    "bv": 1.234,
+    "sv": 0.873
+  }
+}
+```
+
+**Candle Fields:**
+- `t`: Timestamp (Unix milliseconds)
+- `o`: Open price
+- `h`: High price
+- `l`: Low price
+- `c`: Close price
+- `v`: Total volume
+- `bv`: **Buy volume (taker buy base asset volume)** - Real data from Binance
+- `sv`: **Sell volume (total - buy volume)** - Real data from Binance
 
 ### GET /candles/:symbol/range
 Get candles within a specific time range.
@@ -123,7 +155,7 @@ curl http://localhost:8080/api/v1/aggregation/stats
 ```
 
 ### GET /aggregation/candles/:symbol/:interval
-Get ultra-optimized candle data (70% smaller payload).
+Get ultra-optimized candle data (70% smaller payload) with **real buy/sell volume data**.
 
 **Parameters:**
 - `symbol` (path): Trading pair symbol
@@ -147,7 +179,9 @@ curl "http://localhost:8080/api/v1/aggregation/candles/BTCUSDT/1m?limit=5"
       "h": 108903.8,
       "l": 108903.7,
       "c": 108903.8,
-      "v": 2.107
+      "v": 2.107,
+      "bv": 1.234,
+      "sv": 0.873
     }
   ],
   "n": 5,
@@ -155,6 +189,22 @@ curl "http://localhost:8080/api/v1/aggregation/candles/BTCUSDT/1m?limit=5"
   "l": 1748109480000
 }
 ```
+
+**Response Fields:**
+- `s`: Symbol
+- `i`: Interval
+- `d`: Data array of candles
+  - `t`: Timestamp (Unix milliseconds)
+  - `o`: Open price
+  - `h`: High price
+  - `l`: Low price
+  - `c`: Close price
+  - `v`: Total volume
+  - `bv`: **Buy volume (taker buy base asset volume)** - Real data from Binance
+  - `sv`: **Sell volume (total - buy volume)** - Real data from Binance
+- `n`: Number of candles
+- `f`: First timestamp
+- `l`: Last timestamp
 
 ### GET /aggregation/volume-profile/:symbol
 Get volume profile data showing volume distribution across price levels.
@@ -504,6 +554,81 @@ const ws = new WebSocket('ws://localhost:8080/api/v1/websocket/connect');
 }
 ```
 
+**🆕 Trade Update (Real-time Buy/Sell Volume):**
+```json
+{
+  "type": "trade_update",
+  "symbol": "BTCUSDT",
+  "price": 108971.79,
+  "quantity": 0.1,
+  "is_buyer_maker": false,
+  "trade_time": 1748120001234,
+  "timestamp": 1748120001234
+}
+```
+
+**🆕 Kline Update (Real-time Candle with Buy/Sell Volume):**
+```json
+{
+  "type": "kline_update",
+  "symbol": "BTCUSDT",
+  "interval": "1m",
+  "open": 108900.0,
+  "high": 108980.0,
+  "low": 108850.0,
+  "close": 108971.79,
+  "volume": 12.345,
+  "taker_buy_volume": 7.234,
+  "taker_sell_volume": 5.111,
+  "is_closed": false,
+  "start_time": 1748120000000,
+  "end_time": 1748120059999,
+  "timestamp": 1748120001234
+}
+```
+
+**🆕 Depth Update (Order Book):**
+```json
+{
+  "type": "depth_update",
+  "symbol": "BTCUSDT",
+  "bids": [
+    ["108900.0", "1.234"],
+    ["108899.5", "0.567"]
+  ],
+  "asks": [
+    ["108901.0", "0.890"],
+    ["108901.5", "2.345"]
+  ],
+  "timestamp": 1748120001234
+}
+```
+
+**🆕 Mark Price Update (Futures):**
+```json
+{
+  "type": "mark_price_update",
+  "symbol": "BTCUSDT",
+  "mark_price": 108903.45,
+  "funding_rate": 0.0001,
+  "next_funding_time": 1748140800000,
+  "timestamp": 1748120001234
+}
+```
+
+**🆕 Liquidation Update (Futures):**
+```json
+{
+  "type": "liquidation_update",
+  "symbol": "BTCUSDT",
+  "side": "SELL",
+  "price": 108850.0,
+  "quantity": 0.1,
+  "trade_time": 1748119950000,
+  "timestamp": 1748120001234
+}
+```
+
 **Subscription Confirmation:**
 ```json
 {
@@ -546,13 +671,30 @@ curl "http://localhost:8080/api/v1/websocket/stats"
 {
   "connected_clients": 0,
   "subscriptions": {},
-  "binance_symbols": [
-    "BTCUSDT",
-    "ETHUSDT", 
-    "BNBUSDT",
-    "ADAUSDT",
-    "SOLUSDT"
-  ],
+  "binance_stream": {
+    "connected_symbols": 5,
+    "symbols": ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "SOLUSDT"],
+    "price_data_count": 5,
+    "depth_data_count": 5,
+    "kline_data_count": 15,
+    "futures_ticker_count": 5,
+    "mark_price_count": 5,
+    "is_running": true,
+    "spot_connected": true,
+    "futures_connected": true,
+    "stream_types": [
+      "spot_ticker", "futures_ticker", "depth@100ms", "trade", "aggTrade",
+      "kline_1m", "kline_5m", "kline_15m", "markPrice", "liquidations"
+    ],
+    "trade_counts": {
+      "BTCUSDT": 1000,
+      "ETHUSDT": 856
+    },
+    "liquidation_counts": {
+      "BTCUSDT": 12,
+      "ETHUSDT": 8
+    }
+  },
   "service": "websocket",
   "status": "active"
 }
@@ -604,6 +746,52 @@ curl -X POST "http://localhost:8080/api/v1/websocket/symbols/SOLUSDT"
   ]
 }
 ```
+
+#### 🆕 GET /websocket/volume/:symbol
+Get real-time buy/sell volume data for a symbol with **dynamic interval support**.
+
+**Parameters:**
+- `symbol` (path): Trading pair symbol
+- `interval` (query): Time interval (1m, 5m, 15m, 1h, 4h, 1d) - defaults to 1m if not provided
+
+**Request:**
+```bash
+curl "http://localhost:8080/api/v1/websocket/volume/BTCUSDT?interval=5m"
+```
+
+**Response:**
+```json
+{
+  "symbol": "BTCUSDT",
+  "current_candle": {
+    "interval": "5m",
+    "total_volume": 12.345,
+    "buy_volume": 7.234,
+    "sell_volume": 5.111,
+    "delta": 2.123,
+    "buy_percentage": 58.6,
+    "sell_percentage": 41.4,
+    "start_time": 1748120000000,
+    "is_closed": false
+  },
+  "recent_trades": [
+    {
+      "price": 108971.79,
+      "quantity": 0.1,
+      "is_buy": true,
+      "timestamp": 1748120001234
+    }
+  ],
+  "timestamp": 1748120001234,
+  "source": "websocket_cache"
+}
+```
+
+**Key Features:**
+- **Real buy/sell volume data** from Binance (not estimated)
+- **Dynamic interval support** - works with any valid timeframe
+- **Real-time updates** from WebSocket cache
+- **Percentage calculations** for buy/sell distribution
 
 #### GET /websocket/depth/:symbol
 Get the latest order book depth data for a symbol.
@@ -692,9 +880,14 @@ curl "http://localhost:8080/api/v1/websocket/kline/BTCUSDT/1m"
     "h": "108910.00",
     "l": "108895.00",
     "v": "12.345",
+    "V": "7.234",
+    "Q": "783456.78",
     "n": 156,
     "x": true
   },
+  "buy_volume": 7.234,
+  "sell_volume": 5.111,
+  "delta": 2.123,
   "event_time": 1748120000000,
   "timestamp": 1748120001234,
   "source": "websocket_cache"

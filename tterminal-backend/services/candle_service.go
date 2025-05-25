@@ -399,3 +399,81 @@ func (s *CandleService) GetBySymbolAndInterval(ctx context.Context, symbol, inte
 func (s *CandleService) GetByTimeRange(ctx context.Context, symbol, interval string, startTime, endTime time.Time) ([]models.Candle, error) {
 	return s.candleRepo.GetByTimeRange(ctx, symbol, interval, startTime, endTime)
 }
+
+// GetOptimizedCandleData retrieves optimized candle data directly from repository
+// This method bypasses the regular Candle model and returns OptimizedCandle directly
+// with real buy/sell volume data from the database
+func (s *CandleService) GetOptimizedCandleData(ctx context.Context, symbol, interval string, limit int) ([]models.OptimizedCandle, error) {
+	log.Printf("[CandleService] GetOptimizedCandleData called: symbol=%s, interval=%s, limit=%d", symbol, interval, limit)
+
+	// Validate inputs
+	if symbol == "" {
+		err := fmt.Errorf("symbol cannot be empty")
+		log.Printf("[CandleService] Validation error: %v", err)
+		return nil, err
+	}
+	if interval == "" {
+		err := fmt.Errorf("interval cannot be empty")
+		log.Printf("[CandleService] Validation error: %v", err)
+		return nil, err
+	}
+	if limit <= 0 {
+		err := fmt.Errorf("limit must be positive, got %d", limit)
+		log.Printf("[CandleService] Validation error: %v", err)
+		return nil, err
+	}
+
+	// Try to get optimized data directly from repository
+	if s.candleRepo == nil {
+		err := fmt.Errorf("repository is not initialized")
+		log.Printf("[CandleService] CRITICAL ERROR: %v", err)
+		return nil, err
+	}
+
+	optimizedCandles, err := s.candleRepo.GetOptimizedCandleData(ctx, symbol, interval, limit)
+	if err != nil {
+		log.Printf("[CandleService] Repository error: %v", err)
+		return nil, fmt.Errorf("failed to get optimized candles from repository: %w", err)
+	}
+
+	if len(optimizedCandles) > 0 {
+		log.Printf("[CandleService] Successfully retrieved %d optimized candles from repository", len(optimizedCandles))
+		return optimizedCandles, nil
+	}
+
+	log.Printf("[CandleService] No optimized candles found in repository, fetching from Binance...")
+
+	// Fallback: fetch from Binance and store, then get optimized data
+	if s.binanceClient == nil {
+		err := fmt.Errorf("no data in repository and Binance client is not available")
+		log.Printf("[CandleService] ERROR: %v", err)
+		return nil, err
+	}
+
+	// Fetch from Binance
+	candles, err := s.binanceClient.GetKlinesOptimized(ctx, symbol, interval, limit)
+	if err != nil {
+		err = fmt.Errorf("failed to get data from Binance API: %w", err)
+		log.Printf("[CandleService] Binance API error: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[CandleService] Retrieved %d candles from Binance API", len(candles))
+
+	// Store in database
+	if err := s.candleRepo.BulkCreate(ctx, candles); err != nil {
+		log.Printf("[CandleService] WARNING: Failed to store candles in database: %v", err)
+		// Continue anyway, convert the fetched candles to optimized format
+	} else {
+		log.Printf("[CandleService] Successfully stored %d candles in database", len(candles))
+	}
+
+	// Convert fetched candles to optimized format
+	optimizedCandles = make([]models.OptimizedCandle, len(candles))
+	for i, candle := range candles {
+		optimizedCandles[i] = candle.ToOptimized()
+	}
+
+	log.Printf("[CandleService] Returning %d optimized candles", len(optimizedCandles))
+	return optimizedCandles, nil
+}

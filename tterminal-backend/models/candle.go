@@ -30,12 +30,14 @@ type Candle struct {
 // OptimizedCandle represents ultra-fast OHLCV data for frontend rendering
 // Compact field names and optimal data types for minimal JSON payload (70% smaller)
 type OptimizedCandle struct {
-	T int64   `json:"t"` // Timestamp (Unix milliseconds)
-	O float64 `json:"o"` // Open price
-	H float64 `json:"h"` // High price
-	L float64 `json:"l"` // Low price
-	C float64 `json:"c"` // Close price
-	V float64 `json:"v"` // Volume
+	T  int64   `json:"t"`  // Timestamp (Unix milliseconds)
+	O  float64 `json:"o"`  // Open price
+	H  float64 `json:"h"`  // High price
+	L  float64 `json:"l"`  // Low price
+	C  float64 `json:"c"`  // Close price
+	V  float64 `json:"v"`  // Total volume
+	BV float64 `json:"bv"` // Buy volume (taker buy base asset volume)
+	SV float64 `json:"sv"` // Sell volume (total - buy volume)
 }
 
 // CandleResponse optimized for ultra-fast network transmission and parsing
@@ -154,13 +156,19 @@ type CandleStats struct {
 
 // ToOptimized converts regular Candle to OptimizedCandle for ultra-fast transmission
 func (c *Candle) ToOptimized() OptimizedCandle {
+	totalVolume := parseFloat(c.Volume)
+	buyVolume := parseFloat(c.TakerBuyBaseAssetVolume)
+	sellVolume := totalVolume - buyVolume
+
 	return OptimizedCandle{
-		T: c.OpenTime.UnixMilli(),
-		O: parseFloat(c.Open),
-		H: parseFloat(c.High),
-		L: parseFloat(c.Low),
-		C: parseFloat(c.Close),
-		V: parseFloat(c.Volume),
+		T:  c.OpenTime.UnixMilli(),
+		O:  parseFloat(c.Open),
+		H:  parseFloat(c.High),
+		L:  parseFloat(c.Low),
+		C:  parseFloat(c.Close),
+		V:  totalVolume,
+		BV: buyVolume,
+		SV: sellVolume,
 	}
 }
 

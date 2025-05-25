@@ -41,7 +41,7 @@ interface ChartControlsProps {
 
 const timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"]
 const indicators = [
-  "Heatmap", "Volumes", "Trade Counter", "Funding Rate", "Liquidations",
+  "Heatmap", "Volume", "Trade Counter", "Funding Rate", "Liquidations",
   "CVD", "VWAP", "VPSV", "Orderbook Depth", "VPVR"
 ]
 const drawingToolsList = ["Horizontal Ray", "Rectangle", "Measuring Tool"]

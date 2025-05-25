@@ -137,7 +137,7 @@ func (s *AggregationService) GetAggregatedCandles(ctx context.Context, symbol, i
 	}
 
 	// Fetch from database and optimize
-	log.Printf("[AggregationService] Fetching from candle service...")
+	log.Printf("[AggregationService] Fetching optimized data from candle service...")
 	if s.candleService == nil {
 		err := fmt.Errorf("candle service is not initialized")
 		log.Printf("[AggregationService] CRITICAL ERROR: %v", err)
@@ -145,19 +145,34 @@ func (s *AggregationService) GetAggregatedCandles(ctx context.Context, symbol, i
 		return nil, err
 	}
 
-	candles, err := s.candleService.GetBySymbolAndInterval(ctx, symbol, interval, limit)
+	// Use the optimized method that returns real buy/sell volume data
+	optimizedCandles, err := s.candleService.GetOptimizedCandleData(ctx, symbol, interval, limit)
 	if err != nil {
-		err = fmt.Errorf("failed to get candles from service: %w", err)
+		err = fmt.Errorf("failed to get optimized candles from service: %w", err)
 		log.Printf("[AggregationService] Service error: %v", err)
 		s.trackError(err)
 		return nil, err
 	}
 
-	log.Printf("[AggregationService] Retrieved %d candles from service", len(candles))
+	log.Printf("[AggregationService] Retrieved %d optimized candles from service", len(optimizedCandles))
 
-	// Convert to optimized format
-	optimizedResponse := models.NewOptimizedResponse(symbol, interval, candles)
-	log.Printf("[AggregationService] Created optimized response with %d candles", optimizedResponse.N)
+	// Create optimized response directly from OptimizedCandle data
+	var firstTime, lastTime int64
+	if len(optimizedCandles) > 0 {
+		firstTime = optimizedCandles[0].T
+		lastTime = optimizedCandles[len(optimizedCandles)-1].T
+	}
+
+	optimizedResponse := &models.CandleResponse{
+		S: symbol,
+		I: interval,
+		D: optimizedCandles,
+		N: len(optimizedCandles),
+		F: firstTime,
+		L: lastTime,
+	}
+
+	log.Printf("[AggregationService] Created optimized response with %d candles including real buy/sell volume data", optimizedResponse.N)
 
 	// Cache the result (Redis: 5min, Memory: 30sec)
 	if s.cache != nil {
