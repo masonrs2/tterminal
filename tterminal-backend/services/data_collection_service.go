@@ -146,7 +146,113 @@ func (s *DataCollectionService) collectionLoop() {
 // runImmediateCollection runs an immediate collection when the service starts
 func (s *DataCollectionService) runImmediateCollection() {
 	log.Printf("[DataCollectionService] Running immediate collection to populate fresh data...")
+
+	// EFFICIENT: Simply fetch recent historical data for all symbols/intervals
+	s.fetchRecentHistoricalData()
+
+	// Then collect current data
 	s.collectAllData()
+}
+
+// fetchRecentHistoricalData fetches a declared period of recent historical data for all symbols/intervals
+// This is much more efficient than complex gap detection - we simply ensure we have recent complete data
+func (s *DataCollectionService) fetchRecentHistoricalData() {
+	log.Printf("[DataCollectionService] Fetching recent historical data for all symbols/intervals...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+
+	// Use semaphore to limit concurrent requests and respect API limits
+	semaphore := make(chan struct{}, 5) // Conservative limit for historical data fetching
+	var wg sync.WaitGroup
+
+	totalCandles := 0
+
+	for _, symbol := range s.symbols {
+		for _, interval := range s.intervals {
+			wg.Add(1)
+
+			go func(sym, intv string) {
+				defer wg.Done()
+
+				// Acquire semaphore
+				semaphore <- struct{}{}
+				defer func() { <-semaphore }()
+
+				candles := s.fetchHistoricalDataForSymbolInterval(ctx, sym, intv)
+				if candles > 0 {
+					totalCandles += candles
+					log.Printf("[DataCollectionService] Fetched %d historical candles for %s/%s", candles, sym, intv)
+				}
+
+				// Small delay to be respectful to API
+				time.Sleep(200 * time.Millisecond)
+			}(symbol, interval)
+		}
+	}
+
+	wg.Wait()
+
+	log.Printf("[DataCollectionService] Historical data fetch completed - %d total candles fetched", totalCandles)
+}
+
+// fetchHistoricalDataForSymbolInterval fetches historical data for a specific symbol/interval
+func (s *DataCollectionService) fetchHistoricalDataForSymbolInterval(ctx context.Context, symbol, interval string) int {
+	// Get the appropriate limit for this interval to ensure we have enough recent data
+	limit := s.getHistoricalLimit(interval)
+
+	log.Printf("[DataCollectionService] Fetching %d recent candles for %s/%s (most recent data)",
+		limit, symbol, interval)
+
+	// Use the regular optimized method to get the MOST RECENT data (not time range)
+	// This ensures we get the latest candles up to the current time
+	candles, err := s.binanceClient.GetKlinesOptimized(ctx, symbol, interval, limit)
+	if err != nil {
+		log.Printf("[DataCollectionService] ERROR fetching historical data for %s/%s: %v", symbol, interval, err)
+		return 0
+	}
+
+	if len(candles) == 0 {
+		log.Printf("[DataCollectionService] WARNING: No historical data returned for %s/%s", symbol, interval)
+		return 0
+	}
+
+	log.Printf("[DataCollectionService] SUCCESS: Fetched %d candles for %s/%s (time range: %v to %v)",
+		len(candles), symbol, interval,
+		candles[0].OpenTime.Format("2006-01-02 15:04"),
+		candles[len(candles)-1].OpenTime.Format("2006-01-02 15:04"))
+
+	// Store in database (this will upsert, so existing data won't be duplicated)
+	if err := s.candleRepo.BulkCreate(ctx, candles); err != nil {
+		log.Printf("[DataCollectionService] ERROR storing historical data for %s/%s: %v", symbol, interval, err)
+		return 0
+	}
+
+	log.Printf("[DataCollectionService] SUCCESS: Stored %d historical candles for %s/%s in database", len(candles), symbol, interval)
+	return len(candles)
+}
+
+// getHistoricalLimit returns how many recent candles to fetch for each interval
+// This ensures we have enough data for charts while getting the MOST RECENT data
+func (s *DataCollectionService) getHistoricalLimit(interval string) int {
+	switch interval {
+	case "1m":
+		return 1440 // 24 hours of 1m data (gets most recent 24 hours)
+	case "5m":
+		return 1000 // ~3.5 days of 5m data
+	case "15m":
+		return 1000 // ~10 days of 15m data
+	case "30m":
+		return 1000 // ~20 days of 30m data
+	case "1h":
+		return 1000 // ~41 days of 1h data
+	case "4h":
+		return 1000 // ~166 days of 4h data
+	case "1d":
+		return 365 // 1 year of 1d data
+	default:
+		return 1000 // Default
+	}
 }
 
 // collectAllData collects data for all symbols and intervals

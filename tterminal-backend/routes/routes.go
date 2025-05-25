@@ -101,6 +101,7 @@ func SetupRoutes(e *echo.Echo, db *database.DB, cfg *config.Config) {
 	collection := v1.Group("/data-collection")
 	collection.GET("/stats", dataCollectionController.GetStats)                  // Service statistics
 	collection.POST("/collect", dataCollectionController.TriggerCollection)      // Manual trigger
+	collection.POST("/historical", dataCollectionController.FetchHistoricalData) // Fetch historical data
 	collection.POST("/start", dataCollectionController.StartService)             // Start service
 	collection.POST("/stop", dataCollectionController.StopService)               // Stop service
 	collection.POST("/symbols", dataCollectionController.AddSymbol)              // Add symbol to collection

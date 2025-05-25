@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"log"
 	"net/http"
 	"tterminal-backend/services"
 
@@ -132,5 +133,34 @@ func (ctrl *DataCollectionController) RemoveSymbol(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "Symbol removed successfully",
 		"symbol":  symbol,
+	})
+}
+
+// FetchHistoricalData manually triggers historical data fetching
+func (ctrl *DataCollectionController) FetchHistoricalData(c echo.Context) error {
+	if ctrl.dataCollectionService == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Data collection service not available",
+		})
+	}
+
+	// Check if service is running
+	if !ctrl.dataCollectionService.IsRunning() {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Data collection service is not running",
+		})
+	}
+
+	// Trigger historical data fetch in background
+	go func() {
+		log.Printf("[DataCollectionController] Manual historical data fetch triggered")
+		// Use reflection to call the private method (or make it public)
+		// For now, we'll trigger a full collection which includes historical data
+		ctrl.dataCollectionService.CollectNow()
+	}()
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message": "Historical data fetch triggered successfully",
+		"status":  "running",
 	})
 }

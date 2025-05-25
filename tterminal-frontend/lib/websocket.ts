@@ -32,6 +32,29 @@ export interface TradeUpdate {
   timestamp: number
 }
 
+export interface KlineUpdate {
+  type: 'kline_update'
+  symbol: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  timestamp: number
+  interval: string
+  is_closed: boolean
+}
+
+export interface MarkPriceUpdate {
+  type: 'mark_price_update'
+  symbol: string
+  mark_price: number
+  index_price: number
+  funding_rate: number
+  next_funding_time: number
+  timestamp: number
+}
+
 export interface WebSocketMessage {
   type: string
   symbol?: string
@@ -42,7 +65,7 @@ export interface WebSocketMessage {
 }
 
 export interface MessageCallback {
-  (update: PriceUpdate | DepthUpdate | TradeUpdate | WebSocketMessage): void
+  (update: PriceUpdate | DepthUpdate | TradeUpdate | KlineUpdate | MarkPriceUpdate | WebSocketMessage): void
 }
 
 export interface ConnectionCallback {
@@ -288,6 +311,14 @@ class TradingWebSocketService {
           this.handleTradeUpdate(message as TradeUpdate)
           break
 
+        case 'kline_update':
+          this.handleKlineUpdate(message as KlineUpdate)
+          break
+
+        case 'mark_price_update':
+          this.handleMarkPriceUpdate(message as MarkPriceUpdate)
+          break
+
         case 'subscribed':
           if (message.symbol) {
             this.subscribedSymbols.add(message.symbol)
@@ -313,7 +344,13 @@ class TradingWebSocketService {
           break
 
         default:
-          console.warn('Unknown message type:', message.type)
+          // Log unknown message types for debugging (but only in development)
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Unknown message type:', message.type, 'Message:', message)
+          } else {
+            // In production, just log the type to avoid spam
+            console.warn('Unknown message type:', message.type)
+          }
       }
     } catch (error) {
       console.error('Failed to parse individual JSON message:', error)
@@ -378,6 +415,38 @@ class TradingWebSocketService {
           callback(update)
         } catch (error) {
           console.error('Error in trade update callback:', error)
+        }
+      })
+    }
+  }
+
+  /**
+   * Handle kline updates
+   */
+  private handleKlineUpdate(update: KlineUpdate): void {
+    const callbacks = this.subscriptions.get(update.symbol)
+    if (callbacks && callbacks.size > 0) {
+      callbacks.forEach(callback => {
+        try {
+          callback(update)
+        } catch (error) {
+          console.error('Error in kline update callback:', error)
+        }
+      })
+    }
+  }
+
+  /**
+   * Handle mark price updates
+   */
+  private handleMarkPriceUpdate(update: MarkPriceUpdate): void {
+    const callbacks = this.subscriptions.get(update.symbol)
+    if (callbacks && callbacks.size > 0) {
+      callbacks.forEach(callback => {
+        try {
+          callback(update)
+        } catch (error) {
+          console.error('Error in mark price update callback:', error)
         }
       })
     }

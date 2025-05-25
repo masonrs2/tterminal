@@ -62,6 +62,10 @@ export const useChartInteractions = ({
   const lastMousePositionRef = useRef<{ x: number; y: number } | null>(null)
   const lastZoomTimeRef = useRef<number>(0)
   const isZoomingRef = useRef<boolean>(false)
+  
+  // PERFORMANCE: Throttling refs to prevent excessive updates
+  const lastMouseUpdateRef = useRef<number>(0)
+  const mouseUpdateThrottleMs = 16 // ~60fps throttling
 
   /**
    * Calculate current candle height in pixels for smart zoom threshold detection
@@ -248,62 +252,65 @@ export const useChartInteractions = ({
   }, [])
 
   /**
-   * Handle mouse movement for crosshair, candle hover, and axis detection
+   * Handle mouse movement for crosshair and hover effects
+   * PERFORMANCE: Optimized to prevent infinite re-renders with throttling
    */
   const handleMouseMove = useCallback(
-    (event: React.MouseEvent<HTMLCanvasElement>) => {
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      // PERFORMANCE: Throttle updates to ~60fps
+      const now = Date.now()
+      if (now - lastMouseUpdateRef.current < mouseUpdateThrottleMs) {
+        return
+      }
+      lastMouseUpdateRef.current = now
+
+      const rect = canvas.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      
+      // PERFORMANCE: Use refs to avoid dependency issues
+      const currentCandles = candleDataRef.current
+      if (currentCandles.length === 0) {
+        setMousePosition({ x, y, price: 0 })
+        return
+      }
+      
+      // PERFORMANCE: Calculate price using current viewport state from ref
+      const chartHeight = canvas.height - 100
+      const priceMax = Math.max(...currentCandles.map(c => c.high))
+      const priceMin = Math.min(...currentCandles.map(c => c.low))
+      const priceRange = (priceMax - priceMin) / viewportState.priceZoom
+      const price = priceMax - ((y - 50 + viewportState.priceOffset) / chartHeight) * priceRange
+
+      // PERFORMANCE: Only update if position changed significantly (throttling)
+      const threshold = 2 // pixels
+      if (Math.abs(x - (lastMousePositionRef.current?.x || 0)) > threshold || 
+          Math.abs(y - (lastMousePositionRef.current?.y || 0)) > threshold) {
+        setMousePosition({ x, y, price })
+        lastMousePositionRef.current = { x, y }
+      }
+    },
+    // PERFORMANCE: Minimal dependencies - only viewport state that affects price calculation
+    [viewportState.priceZoom, viewportState.priceOffset, setMousePosition]
+  )
+
+  /**
+   * Handle complex mouse interactions (axis dragging, measuring tool, hover detection)
+   * PERFORMANCE: Separated from basic mouse position to prevent re-render issues
+   */
+  const handleComplexMouseInteractions = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current
       if (!canvas) return
 
       const rect = canvas.getBoundingClientRect()
-      const x = event.clientX - rect.left
-      const y = event.clientY - rect.top
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
 
-      if (isCreatingMeasurement) {
-        console.log('Canvas mouse move while creating measurement:', { x, y, isCreatingMeasurement })
-      } else {
-        // Debug: log when mouse move happens but no measuring tool active
-        if (drawingMode === "Measuring Tool") {
-          console.log('Mouse move with measuring tool selected but not creating:', { drawingMode, isCreatingMeasurement })
-        }
-      }
-
-      // Handle active axis dragging only
-      if (dragState.isDraggingPrice) {
-        const deltaY = y - dragState.dragStart.y
-        const sensitivity = 0.002 // Ultra-sensitive for professional trading
-        const zoomFactor = 1 + (deltaY * sensitivity)
-        
-        setViewportState(prev => ({
-          ...prev,
-          priceZoom: Math.max(0.05, Math.min(50, prev.priceZoom * zoomFactor))
-        }))
-        
-        // Update drag start for continuous movement
-        setDragState(prev => ({ ...prev, dragStart: { x, y } }))
-        return
-      }
-
-      if (dragState.isDraggingTime) {
-        const deltaX = x - dragState.dragStart.x
-        const sensitivity = 0.002 // Ultra-sensitive for professional trading
-        const zoomFactor = 1 + (deltaX * sensitivity)
-        
-        setViewportState(prev => ({
-          ...prev,
-          timeZoom: Math.max(0.05, Math.min(50, prev.timeZoom * zoomFactor))
-        }))
-        
-        // Update drag start for continuous movement
-        setDragState(prev => ({ ...prev, dragStart: { x, y } }))
-        return
-      }
-
-      // Don't interfere with existing chart dragging - let trading terminal handle it
-      // CRITICAL FIX: Don't return early during chart dragging!
-      // The crosshair should ALWAYS update for fastest response
-
-      // Handle measuring tool creation
+      // Handle measuring tool creation with minimal state updates
       if (isCreatingMeasurement) {
         const { timeIndex: endTimeIndex, price: endPrice } = screenToChartCoordinates(
           x, y, canvas, 
@@ -322,66 +329,106 @@ export const useChartInteractions = ({
         // Only activate if user has dragged at least 10 pixels
         const isActive = distance > 10
         
-        if (distance > 5) { // Only log when there's some movement to reduce spam
-        }
-
-        if (isActive) {
-          console.log('Measuring selection is now ACTIVE - rectangle should appear')
-        }
-        
-        setMeasuringSelection(prev => {
-          const newSelection = {
+        // PERFORMANCE: Only update if state actually changed
+        if (measuringSelection.endX !== x || measuringSelection.endY !== y || measuringSelection.isActive !== isActive) {
+          setMeasuringSelection(prev => ({
             ...prev,
             endX: x,
             endY: y,
             endTimeIndex,
             endPrice,
             isActive,
-          }
-          console.log('Updating measuring selection:', newSelection)
-          return newSelection
-        })
+          }))
+        }
         
         return
       }
 
-      // Detect axis zones and update cursor
-      const axisZone = getAxisZone(x, y, canvas)
-      if (axisZone === 'price-axis') {
-        canvas.style.cursor = 'ns-resize'
-      } else if (axisZone === 'time-axis') {
-        canvas.style.cursor = 'ew-resize'
-      } else {
-        canvas.style.cursor = 'move'
-      }
-
-      // Calculate which candle is being hovered
-      const candleWidth = 8 * viewportState.timeZoom
-      const spacing = 12 * viewportState.timeZoom
-      const startX = 50
-      const candleIndex = Math.floor((x - startX + viewportState.timeOffset) / spacing)
-
-      if (candleIndex >= 0 && candleIndex < candleDataRef.current.length) {
-        setHoveredCandle(candleDataRef.current[candleIndex])
-      }
-
-      // Calculate price at mouse position with dynamic range
-      const chartHeight = canvas.offsetHeight - 100
-      
-      // Safety check to prevent infinite loops
-      if (candleDataRef.current.length === 0) {
-        setMousePosition({ x, y, price: 0 })
+      // Handle active axis dragging only
+      if (dragState.isDraggingPrice) {
+        const deltaY = y - dragState.dragStart.y
+        const sensitivity = 0.002
+        const zoomFactor = 1 + (deltaY * sensitivity)
+        
+        setViewportState(prev => ({
+          ...prev,
+          priceZoom: Math.max(0.05, Math.min(50, prev.priceZoom * zoomFactor))
+        }))
+        
+        setDragState(prev => ({ ...prev, dragStart: { x, y } }))
         return
       }
-      
-      const priceMax = Math.max(...candleDataRef.current.map(c => c.high))
-      const priceMin = Math.min(...candleDataRef.current.map(c => c.low))
-      const priceRange = (priceMax - priceMin) / viewportState.priceZoom
-      const price = priceMax - ((y - 50 + viewportState.priceOffset) / chartHeight) * priceRange
 
-      setMousePosition({ x, y, price })
+      if (dragState.isDraggingTime) {
+        const deltaX = x - dragState.dragStart.x
+        const sensitivity = 0.002
+        const zoomFactor = 1 + (deltaX * sensitivity)
+        
+        setViewportState(prev => ({
+          ...prev,
+          timeZoom: Math.max(0.05, Math.min(50, prev.timeZoom * zoomFactor))
+        }))
+        
+        setDragState(prev => ({ ...prev, dragStart: { x, y } }))
+        return
+      }
+
+      // PERFORMANCE: Only update cursor and hovered candle if not dragging
+      if (!dragState.isDraggingPrice && !dragState.isDraggingTime && !dragState.isDraggingChart) {
+        // Detect axis zones and update cursor
+        const axisZone = getAxisZone(x, y, canvas)
+        if (axisZone === 'price-axis') {
+          canvas.style.cursor = 'ns-resize'
+        } else if (axisZone === 'time-axis') {
+          canvas.style.cursor = 'ew-resize'
+        } else {
+          canvas.style.cursor = 'move'
+        }
+
+        // Calculate which candle is being hovered (throttled)
+        const candleWidth = 8 * viewportState.timeZoom
+        const spacing = 12 * viewportState.timeZoom
+        const startX = 50
+        const candleIndex = Math.floor((x - startX + viewportState.timeOffset) / spacing)
+
+        if (candleIndex >= 0 && candleIndex < candleDataRef.current.length) {
+          setHoveredCandle(candleDataRef.current[candleIndex])
+        }
+      }
     },
-    [viewportState.timeZoom, viewportState.priceZoom, viewportState.timeOffset, viewportState.priceOffset, dragState.isDraggingPrice, dragState.isDraggingTime, dragState.isDraggingChart, measuringSelection.startX, measuringSelection.startY, isCreatingMeasurement, getAxisZone]
+    [
+      // PERFORMANCE: Reduced dependencies - only include essential state
+      viewportState.timeZoom, 
+      viewportState.priceZoom, 
+      viewportState.timeOffset, 
+      viewportState.priceOffset, 
+      dragState.isDraggingPrice, 
+      dragState.isDraggingTime, 
+      dragState.isDraggingChart,
+      isCreatingMeasurement,
+      measuringSelection.startX,
+      measuringSelection.startY,
+      measuringSelection.endX,
+      measuringSelection.endY,
+      measuringSelection.isActive,
+      setViewportState,
+      setDragState,
+      setMeasuringSelection,
+      setHoveredCandle,
+      getAxisZone
+    ]
+  )
+
+  /**
+   * Combined mouse move handler that calls both basic and complex interactions
+   * PERFORMANCE: Basic mouse position updates are optimized separately
+   */
+  const handleCombinedMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      handleMouseMove(e)
+      handleComplexMouseInteractions(e)
+    },
+    [handleMouseMove, handleComplexMouseInteractions]
   )
 
   /**
@@ -685,7 +732,7 @@ export const useChartInteractions = ({
   }, [canvasRef, setViewportState, getAxisZone, handleSmartZoom])
 
   return {
-    handleMouseMove,
+    handleCombinedMouseMove,
     handleCanvasMouseDown,
     handleAxisDragEnd,
     handleMeasuringToolMouseUp,

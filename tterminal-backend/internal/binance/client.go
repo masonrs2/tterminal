@@ -229,7 +229,85 @@ func (c *Client) GetKlinesOptimized(ctx context.Context, symbol, interval string
 
 // GetKlines is the existing method with enhanced performance
 func (c *Client) GetKlines(symbol, interval string, limit int, startTime, endTime *time.Time) ([]models.Candle, error) {
+	if startTime != nil && endTime != nil {
+		return c.GetKlinesWithTimeRange(context.Background(), symbol, interval, *startTime, *endTime)
+	}
 	return c.GetKlinesOptimized(context.Background(), symbol, interval, limit)
+}
+
+// GetKlinesWithTimeRange fetches klines within a specific time range for gap backfilling
+func (c *Client) GetKlinesWithTimeRange(ctx context.Context, symbol, interval string, startTime, endTime time.Time) ([]models.Candle, error) {
+	requestStart := time.Now()
+	defer c.updateMetrics(time.Since(requestStart))
+
+	// Check rate limit
+	if !c.rateLimiter.canMakeRequest() {
+		return nil, fmt.Errorf("rate limit exceeded")
+	}
+
+	// Build URL with time range parameters
+	params := url.Values{}
+	params.Set("symbol", symbol)
+	params.Set("interval", interval)
+	params.Set("startTime", strconv.FormatInt(startTime.UnixMilli(), 10))
+	params.Set("endTime", strconv.FormatInt(endTime.UnixMilli(), 10))
+	params.Set("limit", "1000") // Maximum allowed by Binance
+
+	url := fmt.Sprintf("%s/fapi/v1/klines?%s", c.baseURL, params.Encode())
+
+	// Create optimized request
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add compression headers for smaller payloads
+	if c.useCompression {
+		req.Header.Set("Accept-Encoding", "gzip, deflate")
+	}
+	req.Header.Set("User-Agent", "TTerminal/1.0")
+
+	// Execute request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Handle compressed response
+	var reader io.Reader = resp.Body
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzipReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		defer gzipReader.Close()
+		reader = gzipReader
+	}
+
+	// Fast JSON parsing
+	var binanceKlines BinanceKlineResponse
+	decoder := json.NewDecoder(reader)
+	if err := decoder.Decode(&binanceKlines); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// Ultra-fast conversion with pre-allocated slice
+	candles := make([]models.Candle, 0, len(binanceKlines))
+	for _, klineData := range binanceKlines {
+		candle, err := c.convertBinanceKlineToCandle(klineData, symbol, interval)
+		if err != nil {
+			continue // Skip invalid candles
+		}
+		candles = append(candles, *candle)
+	}
+
+	return candles, nil
 }
 
 // convertBinanceKlineToCandle converts Binance kline data to our Candle model

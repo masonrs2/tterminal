@@ -330,7 +330,8 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
   }, [onMouseDown, canvasRef])
 
   const handleAxisWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault()
+    // Note: Don't call preventDefault() here as it causes passive event listener warnings
+    // React synthetic events handle this automatically for wheel events
     e.stopPropagation()
     
     if (onAxisWheel) {
@@ -650,7 +651,6 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
         onMouseLeave={onMouseLeave}
         onMouseMoveCapture={onMouseMoveCapture}
         onContextMenu={onContextMenu}
-        onWheel={(e) => onAxisWheel?.('price', e.deltaY)}
       />
 
       {/* Volume Profile Overlay */}

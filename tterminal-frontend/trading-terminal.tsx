@@ -102,7 +102,7 @@ export default function TradingTerminal() {
   const liquidationsCanvasRef = useRef<HTMLCanvasElement>(null)
 
   // Chart interactions hook with real data
-  const { handleMouseMove, handleCanvasMouseDown, handleAxisDragEnd, handleMeasuringToolMouseUp, handleWheel } = useChartInteractions({
+  const { handleCombinedMouseMove, handleCanvasMouseDown, handleAxisDragEnd, handleMeasuringToolMouseUp, handleWheel } = useChartInteractions({
     canvasRef,
     candleData: tradingData.candles,
     drawingMode: state.drawingMode,
@@ -831,8 +831,8 @@ export default function TradingTerminal() {
       stopPropagation: e.stopPropagation.bind(e)
     } as React.MouseEvent<HTMLCanvasElement>
     
-    handleMouseMove(mockCanvasEvent)
-  }, [handleMouseMove])
+    handleCombinedMouseMove(mockCanvasEvent)
+  }, [handleCombinedMouseMove])
 
   const handleAxisMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     // For time axis div, force time axis detection by using coordinates that will trigger time-axis zone
@@ -862,7 +862,8 @@ export default function TradingTerminal() {
 
   // Dedicated axis wheel handler for ultra-fast zooming
   const handleAxisWheel = useCallback((e: React.WheelEvent<HTMLDivElement>, axisType: 'time' | 'price') => {
-    e.preventDefault()
+    // Note: Don't call preventDefault() here as it causes passive event listener warnings
+    // React synthetic events handle this automatically for wheel events
     e.stopPropagation()
     
     // Ultra-aggressive zoom factors for THE FASTEST response
@@ -1422,7 +1423,7 @@ export default function TradingTerminal() {
             measuringSelection={state.measuringSelection}
             navigationMode={state.navigationMode}
             canvasRef={canvasRef}
-            onMouseMove={handleMouseMove}
+            onMouseMove={handleCombinedMouseMove}
             onMouseDown={handleCombinedMouseDown}
             onMouseUp={handleCanvasMouseUp}
             onMouseLeave={() => {
