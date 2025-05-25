@@ -95,7 +95,7 @@ func (h *Hub) Run() {
 			h.clients[client] = true
 			h.mutex.Unlock()
 
-			log.Printf("📱 Client connected: %s (Total: %d)", client.id, len(h.clients))
+			log.Printf("Client connected: %s (Total: %d)", client.id, len(h.clients))
 
 			// Send connection confirmation
 			response := map[string]interface{}{
@@ -121,7 +121,7 @@ func (h *Hub) Run() {
 
 				delete(h.clients, client)
 				close(client.send)
-				log.Printf("📱 Client disconnected: %s (Total: %d)", client.id, len(h.clients))
+				log.Printf("Client disconnected: %s (Total: %d)", client.id, len(h.clients))
 			}
 			h.mutex.Unlock()
 
@@ -148,7 +148,7 @@ func (h *Hub) BroadcastPriceUpdate(update PriceUpdate) {
 	// Convert to JSON
 	message, err := json.Marshal(update)
 	if err != nil {
-		log.Printf("❌ Error marshaling price update: %v", err)
+		log.Printf("Error marshaling price update: %v", err)
 		return
 	}
 
@@ -175,7 +175,7 @@ func (h *Hub) BroadcastDepthUpdate(update map[string]interface{}) {
 	// Convert to JSON
 	message, err := json.Marshal(update)
 	if err != nil {
-		log.Printf("❌ Error marshaling depth update: %v", err)
+		log.Printf("Error marshaling depth update: %v", err)
 		return
 	}
 
@@ -207,7 +207,7 @@ func (h *Hub) BroadcastTradeUpdate(update map[string]interface{}) {
 	// Convert to JSON
 	message, err := json.Marshal(update)
 	if err != nil {
-		log.Printf("❌ Error marshaling trade update: %v", err)
+		log.Printf("Error marshaling trade update: %v", err)
 		return
 	}
 
@@ -239,7 +239,7 @@ func (h *Hub) BroadcastKlineUpdate(update map[string]interface{}) {
 	// Convert to JSON
 	message, err := json.Marshal(update)
 	if err != nil {
-		log.Printf("❌ Error marshaling kline update: %v", err)
+		log.Printf("Error marshaling kline update: %v", err)
 		return
 	}
 
@@ -271,7 +271,7 @@ func (h *Hub) BroadcastMarkPriceUpdate(update map[string]interface{}) {
 	// Convert to JSON
 	message, err := json.Marshal(update)
 	if err != nil {
-		log.Printf("❌ Error marshaling mark price update: %v", err)
+		log.Printf("Error marshaling mark price update: %v", err)
 		return
 	}
 
@@ -303,7 +303,7 @@ func (h *Hub) BroadcastLiquidationUpdate(update map[string]interface{}) {
 	// Convert to JSON
 	message, err := json.Marshal(update)
 	if err != nil {
-		log.Printf("❌ Error marshaling liquidation update: %v", err)
+		log.Printf("Error marshaling liquidation update: %v", err)
 		return
 	}
 
@@ -344,7 +344,7 @@ func (h *Hub) SubscribeSymbol(client *Client, symbol string) {
 	}
 	h.subscriptions[symbol][client] = true
 
-	log.Printf("📈 Client %s subscribed to %s", client.id, symbol)
+	log.Printf("Client %s subscribed to %s", client.id, symbol)
 }
 
 // UnsubscribeSymbol removes a client from symbol subscription
@@ -363,14 +363,14 @@ func (h *Hub) UnsubscribeSymbol(client *Client, symbol string) {
 		}
 	}
 
-	log.Printf("📉 Client %s unsubscribed from %s", client.id, symbol)
+	log.Printf("Client %s unsubscribed from %s", client.id, symbol)
 }
 
 // sendToClient sends a message to a specific client
 func (h *Hub) sendToClient(client *Client, data interface{}) {
 	message, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("❌ Error marshaling message: %v", err)
+		log.Printf("Error marshaling message: %v", err)
 		return
 	}
 

@@ -1672,8 +1672,7 @@ export default function TradingTerminal() {
         {state.showOrderbook && (
           <div className="flex-shrink-0 h-full">
           <HighPerformanceOrderbook
-            bids={tradingData.orderbook.bids}
-            asks={tradingData.orderbook.asks}
+            symbol={selectedSymbol}
             currentPrice={state.currentPrice}
             width={state.componentSizes.orderbookWidth}
             onResize={(width) => state.setComponentSizes(prev => ({ ...prev, orderbookWidth: width }))}

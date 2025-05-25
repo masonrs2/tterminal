@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { tradingWebSocket, type PriceUpdate } from '../../lib/websocket'
+import { tradingWebSocket, type PriceUpdate, type MessageCallback } from '../../lib/websocket'
 
 interface UseWebSocketPriceOptions {
   symbol: string
@@ -39,7 +39,24 @@ export const useWebSocketPrice = (options: UseWebSocketPriceOptions) => {
   const connectionUnsubscribeRef = useRef<(() => void) | null>(null)
 
   // Handle price updates
-  const handlePriceUpdate = useCallback((update: PriceUpdate) => {
+  const handlePriceUpdate = useCallback((message: any) => {
+    // Only handle price_update messages
+    if (message.type !== 'price_update') return
+    
+    const update = message as PriceUpdate
+    
+    // Validate that all required fields exist and are numbers
+    if (
+      typeof update.price !== 'number' ||
+      typeof update.change !== 'number' ||
+      typeof update.changePercent !== 'number' ||
+      typeof update.volume !== 'number' ||
+      typeof update.timestamp !== 'number'
+    ) {
+      console.warn('Invalid price update data:', update)
+      return
+    }
+    
     setState(prev => ({
       ...prev,
       price: update.price,
@@ -117,12 +134,12 @@ export const useWebSocketPrice = (options: UseWebSocketPriceOptions) => {
     
     // Computed values
     isStale: state.lastUpdate > 0 && (Date.now() - state.lastUpdate) > 10000, // 10 seconds
-    isPriceUp: state.change !== null && state.change > 0,
-    isPriceDown: state.change !== null && state.change < 0,
+    isPriceUp: state.change !== null && state.change !== undefined && state.change > 0,
+    isPriceDown: state.change !== null && state.change !== undefined && state.change < 0,
     
-    // Formatted values
-    formattedPrice: state.price !== null ? state.price.toFixed(2) : null,
-    formattedChange: state.change !== null ? state.change.toFixed(2) : null,
-    formattedChangePercent: state.changePercent !== null ? `${state.changePercent > 0 ? '+' : ''}${state.changePercent.toFixed(2)}%` : null,
+    // Formatted values with proper null/undefined checks
+    formattedPrice: (state.price !== null && state.price !== undefined) ? state.price.toFixed(2) : null,
+    formattedChange: (state.change !== null && state.change !== undefined) ? state.change.toFixed(2) : null,
+    formattedChangePercent: (state.changePercent !== null && state.changePercent !== undefined) ? `${state.changePercent > 0 ? '+' : ''}${state.changePercent.toFixed(2)}%` : null,
   }
 } 

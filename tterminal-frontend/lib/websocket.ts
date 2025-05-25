@@ -14,6 +14,24 @@ export interface PriceUpdate {
   timestamp: number
 }
 
+export interface DepthUpdate {
+  type: 'depth_update'
+  symbol: string
+  bids: string[][] // [price, quantity]
+  asks: string[][] // [price, quantity]
+  timestamp: number
+}
+
+export interface TradeUpdate {
+  type: 'trade_update'
+  symbol: string
+  price: number
+  quantity: number
+  is_buyer_maker: boolean
+  trade_time: number
+  timestamp: number
+}
+
 export interface WebSocketMessage {
   type: string
   symbol?: string
@@ -23,8 +41,8 @@ export interface WebSocketMessage {
   data?: any
 }
 
-export interface SubscriptionCallback {
-  (update: PriceUpdate): void
+export interface MessageCallback {
+  (update: PriceUpdate | DepthUpdate | TradeUpdate | WebSocketMessage): void
 }
 
 export interface ConnectionCallback {
@@ -44,7 +62,7 @@ class TradingWebSocketService {
   private lastPingTime = 0
 
   // Subscription management
-  private subscriptions = new Map<string, Set<SubscriptionCallback>>()
+  private subscriptions = new Map<string, Set<MessageCallback>>()
   private connectionCallbacks = new Set<ConnectionCallback>()
   private subscribedSymbols = new Set<string>()
 
@@ -154,7 +172,7 @@ class TradingWebSocketService {
   /**
    * Subscribe to price updates for a symbol
    */
-  public subscribe(symbol: string, callback: SubscriptionCallback): () => void {
+  public subscribe(symbol: string, callback: MessageCallback): () => void {
     // Add callback to subscriptions
     if (!this.subscriptions.has(symbol)) {
       this.subscriptions.set(symbol, new Set())
@@ -262,6 +280,14 @@ class TradingWebSocketService {
           this.handlePriceUpdate(message as PriceUpdate)
           break
 
+        case 'depth_update':
+          this.handleDepthUpdate(message as DepthUpdate)
+          break
+
+        case 'trade_update':
+          this.handleTradeUpdate(message as TradeUpdate)
+          break
+
         case 'subscribed':
           if (message.symbol) {
             this.subscribedSymbols.add(message.symbol)
@@ -320,6 +346,38 @@ class TradingWebSocketService {
           callback(update)
         } catch (error) {
           console.error('Error in price update callback:', error)
+        }
+      })
+    }
+  }
+
+  /**
+   * Handle depth updates
+   */
+  private handleDepthUpdate(update: DepthUpdate): void {
+    const callbacks = this.subscriptions.get(update.symbol)
+    if (callbacks && callbacks.size > 0) {
+      callbacks.forEach(callback => {
+        try {
+          callback(update)
+        } catch (error) {
+          console.error('Error in depth update callback:', error)
+        }
+      })
+    }
+  }
+
+  /**
+   * Handle trade updates
+   */
+  private handleTradeUpdate(update: TradeUpdate): void {
+    const callbacks = this.subscriptions.get(update.symbol)
+    if (callbacks && callbacks.size > 0) {
+      callbacks.forEach(callback => {
+        try {
+          callback(update)
+        } catch (error) {
+          console.error('Error in trade update callback:', error)
         }
       })
     }
