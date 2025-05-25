@@ -605,6 +605,165 @@ curl -X POST "http://localhost:8080/api/v1/websocket/symbols/SOLUSDT"
 }
 ```
 
+#### GET /websocket/depth/:symbol
+Get the latest order book depth data for a symbol.
+
+**Request:**
+```bash
+curl "http://localhost:8080/api/v1/websocket/depth/BTCUSDT"
+```
+
+**Response:**
+```json
+{
+  "symbol": "BTCUSDT",
+  "bids": [
+    ["108900.0", "1.234"],
+    ["108899.5", "0.567"]
+  ],
+  "asks": [
+    ["108901.0", "0.890"],
+    ["108901.5", "2.345"]
+  ],
+  "first_update_id": 12345678,
+  "final_update_id": 12345679,
+  "event_time": 1748120000000,
+  "timestamp": 1748120001234,
+  "source": "websocket_cache"
+}
+```
+
+#### GET /websocket/trades/:symbol
+Get recent trades for a symbol.
+
+**Parameters:**
+- `symbol` (path): Trading pair symbol
+- `limit` (query): Number of trades to return (default: 100)
+
+**Request:**
+```bash
+curl "http://localhost:8080/api/v1/websocket/trades/BTCUSDT?limit=5"
+```
+
+**Response:**
+```json
+{
+  "symbol": "BTCUSDT",
+  "trades": [
+    {
+      "id": 123456789,
+      "price": "108900.50",
+      "qty": "0.001",
+      "time": 1748120000000,
+      "isBuyerMaker": false
+    }
+  ],
+  "count": 5,
+  "limit": 5,
+  "timestamp": 1748120001234,
+  "source": "websocket_cache"
+}
+```
+
+#### GET /websocket/kline/:symbol/:interval
+Get the latest kline data for a symbol and interval.
+
+**Parameters:**
+- `symbol` (path): Trading pair symbol
+- `interval` (path): Time interval (1m, 5m, 15m, 1h, 4h, 1d)
+
+**Request:**
+```bash
+curl "http://localhost:8080/api/v1/websocket/kline/BTCUSDT/1m"
+```
+
+**Response:**
+```json
+{
+  "symbol": "BTCUSDT",
+  "interval": "1m",
+  "kline": {
+    "t": 1748120000000,
+    "T": 1748120059999,
+    "s": "BTCUSDT",
+    "i": "1m",
+    "o": "108900.00",
+    "c": "108905.50",
+    "h": "108910.00",
+    "l": "108895.00",
+    "v": "12.345",
+    "n": 156,
+    "x": true
+  },
+  "event_time": 1748120000000,
+  "timestamp": 1748120001234,
+  "source": "websocket_cache"
+}
+```
+
+### Futures-Specific Endpoints
+
+#### GET /websocket/markprice/:symbol
+Get the latest Futures mark price data for a symbol.
+
+**Request:**
+```bash
+curl "http://localhost:8080/api/v1/websocket/markprice/BTCUSDT"
+```
+
+**Response:**
+```json
+{
+  "symbol": "BTCUSDT",
+  "mark_price": "108903.45",
+  "index_price": "108902.12",
+  "estimated_price": "108904.78",
+  "funding_rate": "0.0001",
+  "next_funding_time": 1748140800000,
+  "event_time": 1748120000000,
+  "timestamp": 1748120001234,
+  "source": "websocket_cache"
+}
+```
+
+#### GET /websocket/liquidations/:symbol
+Get recent Futures liquidations for a symbol.
+
+**Parameters:**
+- `symbol` (path): Trading pair symbol
+- `limit` (query): Number of liquidations to return (default: 100)
+
+**Request:**
+```bash
+curl "http://localhost:8080/api/v1/websocket/liquidations/BTCUSDT?limit=10"
+```
+
+**Response:**
+```json
+{
+  "symbol": "BTCUSDT",
+  "liquidations": [
+    {
+      "symbol": "BTCUSDT",
+      "side": "SELL",
+      "order_type": "LIMIT",
+      "time_in_force": "IOC",
+      "original_qty": "0.100",
+      "price": "108850.00",
+      "avg_price": "108850.00",
+      "order_status": "FILLED",
+      "last_filled_qty": "0.100",
+      "filled_accumulated_qty": "0.100",
+      "trade_time": 1748119950000
+    }
+  ],
+  "count": 10,
+  "limit": 10,
+  "timestamp": 1748120001234,
+  "source": "websocket_cache"
+}
+```
+
 ### Frontend Integration Example
 
 ```javascript

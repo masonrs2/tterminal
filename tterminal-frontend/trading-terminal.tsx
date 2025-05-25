@@ -40,6 +40,8 @@ import { MainChart } from './components/trading-terminal/charts/MainChart'
 import { WebSocketStatus } from './components/trading/WebSocketStatus'
 import HighPerformanceOrderbook from './components/orderbook'
 import type { CandleData } from './types/trading'
+import { VolumeProfile } from './components/trading-terminal/charts/VolumeProfile'
+import { VPVRSettings } from './components/trading-terminal/controls/VPVRSettings'
 
 export default function TradingTerminal() {
   // State for dynamic symbol selection (can be expanded to support multiple symbols)
@@ -92,7 +94,7 @@ export default function TradingTerminal() {
   const timeframesDropdownRef = useRef<HTMLDivElement>(null)
   const indicatorsDropdownRef = useRef<HTMLDivElement>(null)
   const toolsDropdownRef = useRef<HTMLDivElement>(null)
-  const settingsDropdownRef = useRef<HTMLButtonElement>(null)
+  const settingsDropdownRef = useRef<HTMLDivElement>(null)
   const chartSettingsPanelRef = useRef<HTMLDivElement>(null)
   const vpvrSettingsPanelRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -1104,7 +1106,7 @@ export default function TradingTerminal() {
         <div className="flex-1 flex flex-col relative min-h-0" style={{ width: chartAreaWidth }}>
           
           {/* Indicator Info Overlay - Exact UX Design Match */}
-          <div className="absolute top-2 left-4 z-10 space-y-1 text-xs font-mono">
+          <div className="absolute top-2 left-4 z-30 space-y-1 text-xs font-mono">
             <div className="text-xs font-mono">
               <span 
                 className="cursor-pointer hover:text-blue-300 hover:bg-blue-900/20 px-1 rounded transition-colors text-xs font-mono"
@@ -1229,7 +1231,7 @@ export default function TradingTerminal() {
           {/* Reset to Current Price Button */}
           <button
             onClick={handleResetToCurrentPrice}
-            className="absolute top-2 right-4 z-10 bg-black/40 hover:bg-black/60 border border-gray-500/50 rounded px-1.5 py-0.5 text-xs font-mono transition-all flex items-center space-x-1 backdrop-blur-sm"
+            className="absolute top-2 right-4 z-30 bg-black/40 hover:bg-black/60 border border-gray-500/50 rounded px-1.5 py-0.5 text-xs font-mono transition-all flex items-center space-x-1 backdrop-blur-sm"
             title="Reset view to latest candles"
           >
             <svg 
@@ -1261,128 +1263,31 @@ export default function TradingTerminal() {
           )}
 
           {/* VPVR Settings Panel */}
-          {state.openSettingsPanel === "vpvr" && (
-            <div
-              className="absolute top-20 left-4 z-20 bg-[#181818] border border-gray-600 rounded p-4 min-w-80"
-              ref={vpvrSettingsPanelRef}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold">VPVR Settings</h3>
-                <button
-                  onClick={() => handleResetIndicator('vpvr')}
-                  className="px-2 py-1 text-xs bg-[#2a2a2a] hover:bg-[#353535] rounded transition-colors"
-                  title="Reset to defaults"
-                >
-                  Reset
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span>Enable fixed ticks</span>
-                  <input
-                    type="checkbox"
-                    checked={state.indicatorSettings.vpvr.enableFixedTicks}
-                    onChange={(e) => updateIndicatorSetting("vpvr", "enableFixedTicks", e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span>Row count</span>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="range"
-                      min="10"
-                      max="100"
-                      value={state.indicatorSettings.vpvr.rowCount}
-                      onChange={(e) => updateIndicatorSetting("vpvr", "rowCount", Number.parseInt(e.target.value))}
-                      className="w-32"
-                    />
-                    <span className="w-8 text-center">{state.indicatorSettings.vpvr.rowCount}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span>Bull Color</span>
-                  <input
-                    type="color"
-                    value={state.indicatorSettings.vpvr.bullColor}
-                    onChange={(e) => updateIndicatorSetting("vpvr", "bullColor", e.target.value)}
-                    className="w-8 h-8 rounded"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span>Bear Color</span>
-                  <input
-                    type="color"
-                    value={state.indicatorSettings.vpvr.bearColor}
-                    onChange={(e) => updateIndicatorSetting("vpvr", "bearColor", e.target.value)}
-                    className="w-8 h-8 rounded"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span>Origin</span>
-                  <select
-                    value={state.indicatorSettings.vpvr.origin}
-                    onChange={(e) => updateIndicatorSetting("vpvr", "origin", e.target.value)}
-                    className="bg-[#0f0f0f] border border-gray-600 rounded px-2 py-1"
-                  >
-                    <option value="left">left</option>
-                    <option value="right">right</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span>Show POC</span>
-                  <input
-                    type="checkbox"
-                    checked={state.indicatorSettings.vpvr.showPOC}
-                    onChange={(e) => updateIndicatorSetting("vpvr", "showPOC", e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span>POC line color</span>
-                  <input
-                    type="color"
-                    value={state.indicatorSettings.vpvr.pocLineColor}
-                    onChange={(e) => updateIndicatorSetting("vpvr", "pocLineColor", e.target.value)}
-                    className="w-8 h-8 rounded"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span>Value area</span>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="1.0"
-                      step="0.01"
-                      value={state.indicatorSettings.vpvr.valueArea}
-                      onChange={(e) => updateIndicatorSetting("vpvr", "valueArea", Number.parseFloat(e.target.value))}
-                      className="w-32"
-                    />
-                    <span className="w-12 text-center">{state.indicatorSettings.vpvr.valueArea.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span>Delta Mode</span>
-                  <input
-                    type="checkbox"
-                    checked={state.indicatorSettings.vpvr.deltaMode}
-                    onChange={(e) => updateIndicatorSetting("vpvr", "deltaMode", e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+          <VPVRSettings
+            ref={vpvrSettingsPanelRef}
+            isOpen={state.openSettingsPanel === "vpvr"}
+            onClose={() => state.setOpenSettingsPanel(null)}
+            settings={{
+              enableFixedTicks: state.indicatorSettings.vpvr.enableFixedTicks,
+              rowCount: state.indicatorSettings.vpvr.rowCount,
+              bullColor: state.indicatorSettings.vpvr.bullColor,
+              bearColor: state.indicatorSettings.vpvr.bearColor,
+              origin: state.indicatorSettings.vpvr.origin as 'left' | 'right',
+              showPOC: state.indicatorSettings.vpvr.showPOC,
+              pocLineColor: state.indicatorSettings.vpvr.pocLineColor,
+              valueArea: state.indicatorSettings.vpvr.valueArea,
+              deltaMode: state.indicatorSettings.vpvr.deltaMode,
+              showStatsBox: state.indicatorSettings.vpvr.showStatsBox,
+              opacity: state.indicatorSettings.vpvr.opacity,
+            }}
+            onSettingsChange={(newSettings) => {
+              // PERFORMANCE: Update all settings at once for instant rendering
+              Object.entries(newSettings).forEach(([key, value]) => {
+                updateIndicatorSetting("vpvr", key, value)
+              })
+            }}
+            initialPosition={{ x: 400, y: 100 }}
+          />
 
           {/* Chart Settings Panel */}
           {state.showChartSettings && (

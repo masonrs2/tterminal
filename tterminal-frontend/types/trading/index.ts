@@ -33,7 +33,40 @@ export interface OrderbookData {
 export interface VolumeProfileEntry {
   price: number
   volume: number
-  type: 'buy' | 'sell'
+  buyVolume: number
+  sellVolume: number
+  delta: number
+  trades: number
+  type: 'buy' | 'sell' | 'neutral'
+}
+
+export interface VolumeProfileLevel {
+  price: number
+  totalVolume: number
+  buyVolume: number
+  sellVolume: number
+  delta: number // buyVolume - sellVolume
+  isPOC: boolean // Point of Control
+  isValueArea: boolean // Within Value Area
+}
+
+export interface VolumeProfileData {
+  levels: VolumeProfileLevel[]
+  poc: number // Point of Control price
+  vah: number // Value Area High
+  val: number // Value Area Low
+  totalVolume: number
+  totalDelta: number
+  priceRange: { min: number; max: number }
+  rawCandles: CandleData[] // PERFORMANCE: Store raw data for recalculation
+}
+
+export interface TradeData {
+  timestamp: number
+  price: number
+  quantity: number
+  isBuyerMaker: boolean
+  symbol: string
 }
 
 export interface HeatmapData {
@@ -75,6 +108,8 @@ export interface IndicatorSettings {
     pocLineColor: string
     valueArea: number
     deltaMode: boolean
+    showStatsBox: boolean
+    opacity: number
   }
   liquidations: {
     threshold: number

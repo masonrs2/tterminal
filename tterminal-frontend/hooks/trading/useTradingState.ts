@@ -55,14 +55,16 @@ const defaultComponentSizes = {
 const defaultIndicatorSettings = {
   vpvr: {
     enableFixedTicks: false,
-    rowCount: 60,
+    rowCount: 64,
     bullColor: "#00ff88",
     bearColor: "#ff4444",
     origin: "right",
     showPOC: false,
     pocLineColor: "#888888",
-    valueArea: 0.7,
+    valueArea: 0.63,
     deltaMode: false,
+    showStatsBox: true,
+    opacity: 0.7,
   },
   liquidations: {
     threshold: 10,

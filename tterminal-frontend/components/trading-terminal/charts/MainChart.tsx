@@ -17,6 +17,7 @@ import type {
 } from '../../../types/trading'
 import { getTimeRemaining, getCurrentCandleProgress, formatTime, formatDate } from '../../../utils/trading/calculations'
 import { MeasuringToolTooltip } from './MeasuringToolTooltip'
+import { VolumeProfile } from './VolumeProfile'
 
 interface MainChartProps {
   candleData: CandleData[]
@@ -430,209 +431,6 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
       })
     }
 
-    // Draw volume profile (VPVR) - positioned right at the price axis boundary
-    if (activeIndicators.includes("VPVR") && candleData.length > 0) {
-      // Calculate volume profile from actual candle data
-      const { finalMax, finalMin, priceRange } = calculateStablePriceRange()
-      const rowCount = indicatorSettings.vpvr.rowCount
-      const priceStep = priceRange / rowCount
-      
-      // Calculate which candles are currently visible on screen
-      const spacing = 12 * viewportState.timeZoom
-      const visibleCandles = candleData.filter((candle, index) => {
-        const x = index * spacing + 50 - viewportState.timeOffset
-        const candleWidth = 8 * viewportState.timeZoom
-        // Include candles that are at least partially visible
-        return x >= -candleWidth && x <= canvas.offsetWidth + candleWidth
-      })
-      
-      // Only proceed if we have visible candles
-      if (visibleCandles.length === 0) return
-      
-      // ALWAYS use real live/historical data from visible candles for maximum accuracy
-      // This provides the most accurate volume profile based on actual trading data
-      let volumeAtPrice: { [key: number]: { volume: number, buyVolume: number, sellVolume: number, delta: number } } = {}
-      
-      // Initialize price levels - create exactly rowCount levels
-      for (let i = 0; i < rowCount; i++) {
-        const priceLevel = finalMin + (i * priceStep)
-        volumeAtPrice[priceLevel] = { volume: 0, buyVolume: 0, sellVolume: 0, delta: 0 }
-      }
-      
-      // Distribute volume across price levels for each VISIBLE candle only
-      // This creates a dynamic volume profile that updates with the current view
-      visibleCandles.forEach((candle) => {
-        const candleRange = candle.high - candle.low
-        const isBullish = candle.close > candle.open
-        
-        // Distribute candle volume across its price range
-        if (candleRange > 0) {
-          const steps = Math.max(1, Math.min(20, Math.floor(candleRange / priceStep))) // Limit steps for performance
-          const volumePerStep = candle.volume / steps
-          
-          for (let i = 0; i < steps; i++) {
-            const price = candle.low + (candleRange * i / steps)
-            
-            // Find the closest price level (snap to grid)
-            const levelIndex = Math.round((price - finalMin) / priceStep)
-            const clampedIndex = Math.max(0, Math.min(rowCount - 1, levelIndex))
-            const priceLevel = finalMin + (clampedIndex * priceStep)
-            
-            if (volumeAtPrice[priceLevel]) {
-              volumeAtPrice[priceLevel].volume += volumePerStep
-              
-              // Enhanced buy/sell volume distribution based on candle characteristics
-              const positionInCandle = (price - candle.low) / candleRange
-              let buyVol, sellVol
-              
-              if (isBullish) {
-                // For bullish candles, more buying at higher prices (momentum buying)
-                const buyRatio = 0.3 + (positionInCandle * 0.4) // 30-70% buy ratio
-                buyVol = volumePerStep * buyRatio
-                sellVol = volumePerStep * (1 - buyRatio)
-              } else {
-                // For bearish candles, more selling at higher prices (resistance selling)
-                const sellRatio = 0.3 + (positionInCandle * 0.4) // 30-70% sell ratio
-                sellVol = volumePerStep * sellRatio
-                buyVol = volumePerStep * (1 - sellRatio)
-              }
-              
-              volumeAtPrice[priceLevel].buyVolume += buyVol
-              volumeAtPrice[priceLevel].sellVolume += sellVol
-              volumeAtPrice[priceLevel].delta += (buyVol - sellVol) // Calculate net delta
-            }
-          }
-        } else {
-          // For doji candles (no range), assign all volume to the close price
-          const levelIndex = Math.round((candle.close - finalMin) / priceStep)
-          const clampedIndex = Math.max(0, Math.min(rowCount - 1, levelIndex))
-          const priceLevel = finalMin + (clampedIndex * priceStep)
-          
-          if (volumeAtPrice[priceLevel]) {
-            volumeAtPrice[priceLevel].volume += candle.volume
-            // For doji, split volume evenly (indecision)
-            const halfVolume = candle.volume * 0.5
-            volumeAtPrice[priceLevel].buyVolume += halfVolume
-            volumeAtPrice[priceLevel].sellVolume += halfVolume
-            volumeAtPrice[priceLevel].delta += 0 // Net zero for doji
-          }
-        }
-      })
-      
-      // Find maximum value for scaling based on mode
-      let maxValue = 0
-      if (indicatorSettings.vpvr.deltaMode) {
-        // For delta mode, find the maximum absolute delta value
-        maxValue = Math.max(...Object.values(volumeAtPrice).map(v => Math.abs(v.delta)))
-      } else {
-        // For volume mode, find the maximum total volume
-        maxValue = Math.max(...Object.values(volumeAtPrice).map(v => v.volume))
-      }
-      
-      if (maxValue > 0) {
-        const profileWidth = 120 // Maximum width for volume bars
-        const priceAxisStart = canvas.offsetWidth
-        const barHeight = Math.max(1, chartHeight / rowCount) // Calculate bar height to fill space with no gaps
-        
-        // Draw volume profile bars - iterate through all price levels in order
-        for (let i = 0; i < rowCount; i++) {
-          const priceLevel = finalMin + (i * priceStep)
-          const volumeData = volumeAtPrice[priceLevel]
-          
-          if (volumeData && (volumeData.volume > 0 || Math.abs(volumeData.delta) > 0)) {
-            // Calculate Y position for this price level - bars should touch each other
-            const y = 50 + (i * barHeight) + (chartHeight * (1 - viewportState.priceZoom)) / 2 - viewportState.priceOffset
-            
-            // Only draw if visible on screen
-            if (y >= -barHeight && y <= canvas.offsetHeight + barHeight) {
-              if (indicatorSettings.vpvr.deltaMode) {
-                // Delta mode: show net buy/sell difference
-                const delta = volumeData.delta
-                const isNetBuy = delta > 0
-                const deltaWidth = (Math.abs(delta) / maxValue) * profileWidth
-                
-                // Use different colors for positive (buy) and negative (sell) delta
-                ctx.fillStyle = isNetBuy 
-                  ? indicatorSettings.vpvr.bullColor + "CC" 
-                  : indicatorSettings.vpvr.bearColor + "CC"
-                
-                if (indicatorSettings.vpvr.origin === "left") {
-                  ctx.fillRect(priceAxisStart - profileWidth, y, deltaWidth, barHeight)
-                } else {
-                  ctx.fillRect(priceAxisStart - deltaWidth, y, deltaWidth, barHeight)
-                }
-                
-                // Add a subtle center line for delta mode to show zero point
-                if (i === 0) {
-                  ctx.strokeStyle = "#666666"
-                  ctx.lineWidth = 1
-                  ctx.setLineDash([1, 1])
-                  const centerX = indicatorSettings.vpvr.origin === "left" 
-                    ? priceAxisStart - profileWidth / 2 
-                    : priceAxisStart - profileWidth / 2
-                  ctx.beginPath()
-                  ctx.moveTo(centerX, 50)
-                  ctx.lineTo(centerX, 50 + chartHeight)
-                  ctx.stroke()
-                  ctx.setLineDash([])
-                }
-              } else {
-                // Volume mode: show buy/sell split with enhanced visualization
-                const buyWidth = (volumeData.buyVolume / maxValue) * profileWidth
-                const sellWidth = (volumeData.sellVolume / maxValue) * profileWidth
-                
-                if (indicatorSettings.vpvr.origin === "left") {
-                  // Draw from left edge
-                  ctx.fillStyle = indicatorSettings.vpvr.bullColor + "CC"
-                  ctx.fillRect(priceAxisStart - profileWidth, y, buyWidth, barHeight)
-                  
-                  ctx.fillStyle = indicatorSettings.vpvr.bearColor + "CC"
-                  ctx.fillRect(priceAxisStart - profileWidth + buyWidth, y, sellWidth, barHeight)
-                } else {
-                  // Draw from right edge (default)
-                  ctx.fillStyle = indicatorSettings.vpvr.bearColor + "CC"
-                  ctx.fillRect(priceAxisStart - sellWidth, y, sellWidth, barHeight)
-                  
-                  ctx.fillStyle = indicatorSettings.vpvr.bullColor + "CC"
-                  ctx.fillRect(priceAxisStart - sellWidth - buyWidth, y, buyWidth, barHeight)
-                }
-              }
-            }
-          }
-        }
-        
-        // Draw Point of Control (POC) - highest volume/delta price level
-        if (indicatorSettings.vpvr.showPOC) {
-          let pocPrice = finalMin
-          let maxVal = 0
-          
-          // Find the price level with maximum value (volume or absolute delta)
-          Object.entries(volumeAtPrice).forEach(([priceLevelStr, data]) => {
-            const value = indicatorSettings.vpvr.deltaMode ? Math.abs(data.delta) : data.volume
-            if (value > maxVal) {
-              maxVal = value
-              pocPrice = parseFloat(priceLevelStr)
-            }
-          })
-          
-          // Calculate POC Y position using the same method as price levels
-          const pocIndex = Math.round((pocPrice - finalMin) / priceStep)
-          const pocY = 50 + (pocIndex * barHeight) + (chartHeight * (1 - viewportState.priceZoom)) / 2 - viewportState.priceOffset + (barHeight / 2)
-          
-          if (pocY >= 0 && pocY <= canvas.offsetHeight) {
-            ctx.strokeStyle = indicatorSettings.vpvr.pocLineColor
-            ctx.lineWidth = 2
-            ctx.setLineDash([4, 4])
-            ctx.beginPath()
-            ctx.moveTo(0, pocY)
-            ctx.lineTo(priceAxisStart, pocY)
-            ctx.stroke()
-            ctx.setLineDash([])
-          }
-        }
-      }
-    }
-
     // Draw candlesticks with dynamic price scaling
     const candleWidth = 8 * viewportState.timeZoom
     candleData.forEach((candle, index) => {
@@ -646,10 +444,10 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
       const isActivelyCurrent = isCurrentCandle && candleAge < intervalMs
 
       // Dynamic price scaling based on actual data range with padding
-      const high = 50 + ((finalMax - candle.high) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
-      const low = 50 + ((finalMax - candle.low) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
-      const open = 50 + ((finalMax - candle.open) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
-      const close = 50 + ((finalMax - candle.close) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const high = 50 + ((finalMax - candle.high) / priceRange) * chartHeight
+      const low = 50 + ((finalMax - candle.low) / priceRange) * chartHeight
+      const open = 50 + ((finalMax - candle.open) / priceRange) * chartHeight
+      const close = 50 + ((finalMax - candle.close) / priceRange) * chartHeight
 
       // Highlight hovered candle
       if (hoveredCandle && hoveredCandle.timestamp === candle.timestamp) {
@@ -702,7 +500,7 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
     ctx.strokeStyle = currentPriceLineColor
     ctx.lineWidth = 1
     ctx.setLineDash([3, 3])
-    const currentY = 50 + ((finalMax - currentPrice) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+    const currentY = 50 + ((finalMax - currentPrice) / priceRange) * chartHeight
     ctx.beginPath()
     ctx.moveTo(0, currentY)
     ctx.lineTo(canvas.offsetWidth, currentY) // Extend to full width including price axis
@@ -747,9 +545,9 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
       ctx.beginPath()
 
       const x1 = drawing.time1 * spacing + 50 - viewportState.timeOffset
-      const y1 = 50 + ((finalMax - drawing.price1) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const y1 = 50 + ((finalMax - drawing.price1) / priceRange) * chartHeight
       const x2 = drawing.time2 * spacing + 50 - viewportState.timeOffset
-      const y2 = 50 + ((finalMax - drawing.price2) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const y2 = 50 + ((finalMax - drawing.price2) / priceRange) * chartHeight
 
       if (drawing.type === "Horizontal Ray") {
         ctx.moveTo(0, y1)
@@ -821,21 +619,63 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
     measuringSelection,
   ])
 
+  // Get current price range for volume profile
+  const currentPriceRange = React.useMemo(() => {
+    const { finalMax, finalMin } = calculateStablePriceRange()
+    return { min: finalMin, max: finalMax }
+  }, [calculateStablePriceRange])
+
+  // Handle price click from volume profile
+  const handleVolumeProfilePriceClick = useCallback((price: number) => {
+    // Center the chart on the clicked price
+    const { finalMax, finalMin } = calculateStablePriceRange()
+    const priceRange = finalMax - finalMin
+    const centerOffset = ((price - (finalMin + priceRange / 2)) / priceRange) * 200
+    
+    // Update viewport to center on clicked price
+    // This would need to be passed up to the parent component
+    console.log(`Volume Profile: Clicked price ${price.toFixed(2)}`)
+  }, [calculateStablePriceRange])
+
   return (
-    <div className={`flex-1 relative min-h-0 ${className}`}>
+    <div className={`relative ${className}`} style={{ width: '100%', height: '100%' }}>
+      {/* Main Chart Canvas */}
       <canvas
         ref={canvasRef}
-        className={`w-full h-full ${
-          navigationMode === 'auto' ? 'cursor-ew-resize' : 'cursor-move'
-        }`}
-        style={{ width: "100%", height: "100%" }}
+        className="absolute top-0 left-0 w-full h-full cursor-crosshair"
+        style={{ zIndex: 10 }}
         onMouseMove={onMouseMove}
         onMouseDown={onMouseDown}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseLeave}
         onMouseMoveCapture={onMouseMoveCapture}
         onContextMenu={onContextMenu}
+        onWheel={(e) => onAxisWheel?.('price', e.deltaY)}
       />
+
+      {/* Volume Profile Overlay */}
+      {activeIndicators.includes("VPVR") && candleData.length > 0 && (
+        <VolumeProfile
+          symbol="BTCUSDT" // TODO: Get from props or context
+          timeRange={24} // TODO: Make configurable
+          rowCount={indicatorSettings.vpvr.rowCount}
+          enableRealTime={true}
+          valueAreaPercentage={indicatorSettings.vpvr.valueArea * 100}
+          viewportState={viewportState}
+          chartHeight={canvasRef.current?.offsetHeight || 600}
+          chartWidth={canvasRef.current?.offsetWidth || 800}
+          priceRange={currentPriceRange}
+          showDelta={indicatorSettings.vpvr.deltaMode}
+          showPOC={indicatorSettings.vpvr.showPOC}
+          showValueArea={true}
+          showStatsBox={indicatorSettings.vpvr.showStatsBox}
+          opacity={indicatorSettings.vpvr.opacity}
+          candleData={candleData}
+          onPriceClick={(price) => {
+            console.log('Volume profile price clicked:', price)
+          }}
+        />
+      )}
 
       {/* Measuring Tool Tooltip */}
       <MeasuringToolTooltip
@@ -848,6 +688,11 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
       {/* Interactive Price axis with drag support */}
       <div 
         className="absolute right-0 top-0 bottom-0 w-20 bg-[#181818] border-l border-gray-700 cursor-ns-resize hover:bg-[#202020] transition-colors select-none"
+        style={{ 
+          zIndex: 20, // CRITICAL FIX: Explicit z-index to ensure visibility
+          display: 'block', // CRITICAL FIX: Ensure price axis is visible
+          visibility: 'visible' // CRITICAL FIX: Force visibility
+        }}
         onMouseMove={handleAxisMouseMove}
         onMouseDown={handleAxisMouseDown}
         onMouseUp={onMouseUp}
@@ -880,7 +725,7 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
             // Generate price levels from bottom to top
             for (let price = startPrice; price <= finalMax + niceStep; price += niceStep) {
               // Calculate Y position using the SAME formula as chart candles
-              const y = 50 + ((finalMax - price) / stableRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+              const y = 50 + ((finalMax - price) / stableRange) * chartHeight
               
               // Only show labels that are visible on screen
               if (y >= 10 && y <= (canvasRef?.current?.offsetHeight || 400) - 10) {
@@ -915,7 +760,7 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
             }
             
             // ALWAYS add the exact current price - it should never disappear
-            const currentPriceY = 50 + ((finalMax - currentPrice) / stableRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+            const currentPriceY = 50 + ((finalMax - currentPrice) / stableRange) * chartHeight
             
             // Show current price if it's visible on screen
             if (currentPriceY >= 10 && currentPriceY <= (canvasRef?.current?.offsetHeight || 400) - 10) {
@@ -984,7 +829,7 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
                 const chartHeight = canvasRef?.current?.offsetHeight ? canvasRef.current.offsetHeight - 100 : 400
                 
                 // Calculate Y position using the SAME formula as chart candles, offset by 18px below current price (much closer)
-                const currentPriceY = 50 + ((finalMax - currentPrice) / stableRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+                const currentPriceY = 50 + ((finalMax - currentPrice) / stableRange) * chartHeight
                 const countdownY = currentPriceY + 18
                 
                 return `${countdownY}px`
