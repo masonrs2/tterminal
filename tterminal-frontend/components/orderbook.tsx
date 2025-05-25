@@ -23,6 +23,7 @@ const OrderbookRow = React.memo(({
   entry, 
   type, 
   maxTotal,
+  maxSize,
   isFlashing,
   showBuys = true,
   showSells = true,
@@ -31,12 +32,16 @@ const OrderbookRow = React.memo(({
   entry: OrderbookEntry
   type: 'bid' | 'ask'
   maxTotal: number
+  maxSize: number
   isFlashing?: boolean
   showBuys?: boolean
   showSells?: boolean
   showDelta?: boolean
 }) => {
   const fillPercentage = maxTotal > 0 ? (entry.total / maxTotal) * 100 : 0
+  
+  // Calculate depth bar width based on size (volume at this price level)
+  const depthPercentage = maxSize > 0 ? (entry.size / maxSize) * 100 : 0
   
   // Calculate mock buy/sell split and delta for display
   const buyRatio = type === 'bid' ? 0.7 : 0.3
@@ -52,13 +57,35 @@ const OrderbookRow = React.memo(({
       }`}
       style={{ height: '16px', fontSize: '11px' }}
     >
-      {/* Background fill */}
+      {/* Depth visualization bar - shows volume at this price level */}
       <div 
-        className={`absolute inset-0 transition-all duration-300 ${
-          type === 'bid' ? 'bg-green-500/8' : 'bg-red-500/8'
+        className={`absolute inset-0 transition-all duration-300 border-r-2 ${
+          type === 'bid' 
+            ? 'bg-gradient-to-r from-green-500/30 to-green-500/10 border-green-400/40' 
+            : 'bg-gradient-to-r from-red-500/30 to-red-500/10 border-red-400/40'
         }`}
-        style={{ width: `${fillPercentage}%`, right: 0 }}
+        style={{ 
+          width: `${Math.min(depthPercentage, 90)}%`, // Cap at 90% to leave space for text
+          right: type === 'ask' ? 0 : 'auto',
+          left: type === 'bid' ? 0 : 'auto'
+        }}
       />
+      
+      {/* Additional depth highlight for larger volumes */}
+      {depthPercentage > 50 && (
+        <div 
+          className={`absolute inset-0 transition-all duration-300 ${
+            type === 'bid' 
+              ? 'bg-gradient-to-r from-green-400/25 to-transparent' 
+              : 'bg-gradient-to-r from-red-400/25 to-transparent'
+          }`}
+          style={{ 
+            width: `${Math.min(depthPercentage * 0.6, 60)}%`,
+            right: type === 'ask' ? 0 : 'auto',
+            left: type === 'bid' ? 0 : 'auto'
+          }}
+        />
+      )}
       
       {/* Content matching screenshot layout */}
       <div className="relative z-10 flex w-full px-1">
@@ -226,6 +253,15 @@ export default function HighPerformanceOrderbook({
     )
   }, [filteredBids, filteredAsks])
 
+  // Calculate max size for depth bar visualization
+  const maxSize = useMemo(() => {
+    const allFilteredEntries = [...(filteredBids || []), ...(filteredAsks || [])]
+    return Math.max(
+      ...allFilteredEntries.map(entry => entry.size),
+      1 // Prevent division by zero
+    )
+  }, [filteredBids, filteredAsks])
+
   return (
     <div 
       className="bg-black border-l border-gray-700 relative flex flex-col h-full"
@@ -327,6 +363,7 @@ export default function HighPerformanceOrderbook({
               entry={ask}
               type="ask"
               maxTotal={maxTotal}
+              maxSize={maxSize}
               isFlashing={flashingPrices.has(ask.price)}
               showBuys={showBuys}
               showSells={showSells}
@@ -350,6 +387,7 @@ export default function HighPerformanceOrderbook({
               entry={bid}
               type="bid"
               maxTotal={maxTotal}
+              maxSize={maxSize}
               isFlashing={flashingPrices.has(bid.price)}
               showBuys={showBuys}
               showSells={showSells}
