@@ -41,6 +41,7 @@ class TradingWebSocketService {
   private maxReconnectDelay = 30000 // Max 30 seconds
   private pingInterval: NodeJS.Timeout | null = null
   private reconnectTimeout: NodeJS.Timeout | null = null
+  private lastPingTime = 0
 
   // Subscription management
   private subscriptions = new Map<string, Set<SubscriptionCallback>>()
@@ -70,7 +71,7 @@ class TradingWebSocketService {
     return new Promise((resolve, reject) => {
       // Prevent connection during SSR
       if (typeof window === 'undefined') {
-        console.log('🚫 WebSocket connection skipped during SSR')
+        console.log('WebSocket connection skipped during SSR')
         reject(new Error('WebSocket not available during SSR'))
         return
       }
@@ -81,27 +82,23 @@ class TradingWebSocketService {
       }
 
       this.isConnecting = true
-      console.log(`🔗 Connecting to WebSocket: ${this.wsUrl}`)
+      console.log(`WebSocket connecting to: ${this.wsUrl}`)
 
       try {
         this.ws = new WebSocket(this.wsUrl)
 
         this.ws.onopen = () => {
-          console.log('✅ WebSocket connected')
+          console.log('WebSocket connected')
           this.isConnected = true
-          this.isConnecting = false
           this.reconnectAttempts = 0
-          this.reconnectDelay = 1000
-
-          // Notify connection callbacks
-          this.connectionCallbacks.forEach(callback => callback(true))
-
-          // Re-subscribe to all symbols
-          this.resubscribeAll()
-
+          this.lastPingTime = Date.now()
+          
+          // Send ping immediately after connection
+          this.sendPing()
+          
           // Start ping interval
           this.startPingInterval()
-
+          
           resolve()
         }
 
@@ -110,7 +107,7 @@ class TradingWebSocketService {
         }
 
         this.ws.onclose = (event) => {
-          console.log('📴 WebSocket disconnected')
+          console.log('WebSocket disconnected')
           this.handleDisconnection()
           if (this.isConnecting) {
             reject(new Error(`WebSocket connection failed: ${event.reason}`))
@@ -118,15 +115,13 @@ class TradingWebSocketService {
         }
 
         this.ws.onerror = (error) => {
-          console.error('❌ WebSocket error:', error)
-          if (this.isConnecting) {
-            reject(error)
-          }
+          console.error('WebSocket error:', error)
+          this.isConnected = false
+          reject(error)
         }
 
       } catch (error) {
-        console.error('❌ Failed to create WebSocket:', error)
-        this.isConnecting = false
+        console.error('Failed to create WebSocket:', error)
         reject(error)
       }
     })
@@ -214,7 +209,7 @@ class TradingWebSocketService {
       const cleanData = data.trim()
       
       if (!cleanData) {
-        console.warn('⚠️ Received empty WebSocket message')
+        console.warn('Received empty WebSocket message')
         return
       }
 
@@ -234,7 +229,7 @@ class TradingWebSocketService {
       this.parseAndHandleSingleMessage(cleanData)
 
     } catch (error) {
-      console.error('❌ Failed to process WebSocket message:', error)
+      console.error('Failed to process WebSocket message:', error)
       console.error('📄 Raw data that caused error:', data)
     }
   }
@@ -246,7 +241,7 @@ class TradingWebSocketService {
     try {
       // Validate JSON format before parsing
       if (!data.startsWith('{') || !data.endsWith('}')) {
-        console.warn('⚠️ Invalid JSON format, skipping:', data.substring(0, 100))
+        console.warn('Invalid JSON format, skipping:', data.substring(0, 100))
         return
       }
 
@@ -254,7 +249,7 @@ class TradingWebSocketService {
 
       // Validate message structure
       if (!message.type) {
-        console.warn('⚠️ Message missing type field:', message)
+        console.warn('Message missing type field:', message)
         return
       }
 
@@ -288,14 +283,14 @@ class TradingWebSocketService {
           break
 
         case 'error':
-          console.error('🚨 WebSocket server error:', message.message)
+          console.error('WebSocket server error:', message.message)
           break
 
         default:
-          console.warn('📝 Unknown message type:', message.type)
+          console.warn('Unknown message type:', message.type)
       }
     } catch (error) {
-      console.error('❌ Failed to parse individual JSON message:', error)
+      console.error('Failed to parse individual JSON message:', error)
       console.error('📄 Message data:', data)
       
       // Try to extract partial JSON if possible
@@ -309,7 +304,7 @@ class TradingWebSocketService {
           console.log('✅ Successfully parsed partial message:', partialMessage)
         }
       } catch (extractError) {
-        console.error('❌ Could not extract valid JSON from message')
+        console.error('Could not extract valid JSON from message')
       }
     }
   }
@@ -324,7 +319,7 @@ class TradingWebSocketService {
         try {
           callback(update)
         } catch (error) {
-          console.error('❌ Error in price update callback:', error)
+          console.error('Error in price update callback:', error)
         }
       })
     }
@@ -355,18 +350,18 @@ class TradingWebSocketService {
    */
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('❌ Max reconnection attempts reached. Giving up.')
+      console.error('Max reconnection attempts reached. Giving up.')
       return
     }
 
     this.reconnectAttempts++
     const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay)
 
-    console.log(`🔄 Scheduling reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`)
+    console.log(`Scheduling reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`)
 
     this.reconnectTimeout = setTimeout(() => {
       this.connect().catch(error => {
-        console.error('❌ Reconnection failed:', error)
+        console.error('Reconnection failed:', error)
       })
     }, delay)
   }
@@ -417,6 +412,15 @@ class TradingWebSocketService {
       }
     }, 30000) // Ping every 30 seconds
   }
+
+  /**
+   * Send ping immediately after connection
+   */
+  private sendPing(): void {
+    if (this.ws && this.isConnected) {
+      this.ws.send(JSON.stringify({ type: 'ping' }))
+    }
+  }
 }
 
 // Singleton instance
@@ -425,6 +429,6 @@ export const tradingWebSocket = new TradingWebSocketService()
 // Auto-connect when module loads
 if (typeof window !== 'undefined') {
   tradingWebSocket.connect().catch(error => {
-    console.error('❌ Failed to auto-connect WebSocket:', error)
+    console.error('Failed to auto-connect WebSocket:', error)
   })
 } 

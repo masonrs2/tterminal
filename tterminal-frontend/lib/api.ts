@@ -250,7 +250,7 @@ export class TradingAPI {
       const timeSpan = (candles[candles.length - 1].timestamp - candles[0].timestamp) / (1000 * 60 * 60)
       const historical = candles.filter(c => now - c.timestamp >= 6 * 60 * 60 * 1000).length
       
-      console.log(`✅ API ${symbol}/${interval}:`, {
+      console.log(`API ${symbol}/${interval}:`, {
         received: candles.length,
         requested: limit,
         timeSpan: `${timeSpan.toFixed(1)}h`,
@@ -432,7 +432,7 @@ export class TradingAPI {
       }
 
       const totalCandles = Object.values(result.candles).reduce((sum: number, candles: any) => sum + candles.length, 0)
-      console.log(`✅ Multi-data loaded: ${totalCandles} candles across ${Object.keys(result.candles).length} intervals`)
+      console.log(`Multi-data loaded: ${totalCandles} candles across ${Object.keys(result.candles).length} intervals`)
 
       return result
     } catch (error) {

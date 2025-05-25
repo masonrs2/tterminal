@@ -142,80 +142,47 @@ const loadCandlesFromLocalStorage = (symbol: string, interval: string): CandleDa
 // Helper function to analyze data quality across time periods
 const analyzeDataQuality = (candles: CandleData[], symbol: string, interval: string) => {
   if (candles.length === 0) {
-    console.log(`❌ No candles to analyze for ${symbol}/${interval}`)
-    return null
-  }
-  
-  const now = Date.now()
-  const analysis = {
-    symbol,
-    interval,
-    totalCandles: candles.length,
-    timeSpan: {
-      hours: (candles[candles.length - 1].timestamp - candles[0].timestamp) / (1000 * 60 * 60),
-      days: (candles[candles.length - 1].timestamp - candles[0].timestamp) / (1000 * 60 * 60 * 24)
-    },
-    oldestCandle: {
-      timestamp: candles[0].timestamp,
-      date: new Date(candles[0].timestamp).toISOString(),
-      ageHours: (now - candles[0].timestamp) / (1000 * 60 * 60),
-      ohlc: `O:${candles[0].open} H:${candles[0].high} L:${candles[0].low} C:${candles[0].close}`
-    },
-    newestCandle: {
-      timestamp: candles[candles.length - 1].timestamp,
-      date: new Date(candles[candles.length - 1].timestamp).toISOString(),
-      ageMinutes: (now - candles[candles.length - 1].timestamp) / (1000 * 60),
-      ohlc: `O:${candles[candles.length - 1].open} H:${candles[candles.length - 1].high} L:${candles[candles.length - 1].low} C:${candles[candles.length - 1].close}`
-    },
-    distribution: {
-      last5min: candles.filter(c => now - c.timestamp < 5 * 60 * 1000).length,
-      last30min: candles.filter(c => now - c.timestamp < 30 * 60 * 1000).length,
-      last1hour: candles.filter(c => now - c.timestamp < 60 * 60 * 1000).length,
-      last6hours: candles.filter(c => now - c.timestamp < 6 * 60 * 60 * 1000).length,
-      last24hours: candles.filter(c => now - c.timestamp < 24 * 60 * 60 * 1000).length,
-      historical: candles.filter(c => now - c.timestamp >= 6 * 60 * 60 * 1000).length
-    },
-    sampleCandles: {
-      first3: candles.slice(0, 3).map(c => ({
-        timestamp: c.timestamp,
-        date: new Date(c.timestamp).toISOString(),
-        ohlc: `O:${c.open} H:${c.high} L:${c.low} C:${c.close}`,
-        ageHours: (now - c.timestamp) / (1000 * 60 * 60)
-      })),
-      middle3: candles.slice(Math.floor(candles.length / 2) - 1, Math.floor(candles.length / 2) + 2).map(c => ({
-        timestamp: c.timestamp,
-        date: new Date(c.timestamp).toISOString(),
-        ohlc: `O:${c.open} H:${c.high} L:${c.low} C:${c.close}`,
-        ageHours: (now - c.timestamp) / (1000 * 60 * 60)
-      })),
-      last3: candles.slice(-3).map(c => ({
-        timestamp: c.timestamp,
-        date: new Date(c.timestamp).toISOString(),
-        ohlc: `O:${c.open} H:${c.high} L:${c.low} C:${c.close}`,
-        ageMinutes: (now - c.timestamp) / (1000 * 60)
-      }))
-    },
-    dataGaps: [] as Array<{ start: string, end: string, gapMinutes: number }>
-  }
-  
-  // Check for data gaps
-  for (let i = 1; i < candles.length; i++) {
-    const expectedInterval = getIntervalInMs(interval)
-    const actualGap = candles[i].timestamp - candles[i - 1].timestamp
-    const gapMinutes = actualGap / (1000 * 60)
-    
-    // If gap is more than 2x the expected interval, it's a significant gap
-    if (actualGap > expectedInterval * 2) {
-      analysis.dataGaps.push({
-        start: new Date(candles[i - 1].timestamp).toISOString(),
-        end: new Date(candles[i].timestamp).toISOString(),
-        gapMinutes
-      })
+    console.log(`No candles to analyze for ${symbol}/${interval}`)
+    return {
+      timeSpan: '0h',
+      oldestCandle: 'No data',
+      newestCandle: 'No data',
+      candleCount: 0,
+      avgCandleGap: '0m',
+      dataQuality: 'No data'
     }
   }
+
+  const firstCandle = candles[0]
+  const lastCandle = candles[candles.length - 1]
+  const now = Date.now()
   
-  console.log(`🔍 Data Quality Analysis for ${symbol}/${interval}:`, analysis)
-  return analysis
+  // Calculate time span
+  const timeSpanMs = lastCandle.timestamp - firstCandle.timestamp
+  const timeSpanHours = timeSpanMs / (1000 * 60 * 60)
+  
+  // Calculate how old the newest candle is
+  const newestCandleAge = (now - lastCandle.timestamp) / (1000 * 60)
+  
+  // Calculate average gap between candles
+  const totalGaps = candles.length - 1
+  const avgGapMs = totalGaps > 0 ? timeSpanMs / totalGaps : 0
+  const avgGapMinutes = avgGapMs / (1000 * 60)
+  
+  // Determine data quality
+  let dataQuality = 'Good'
+  if (newestCandleAge > 10) dataQuality = 'Stale'
+  if (timeSpanHours < 1) dataQuality = 'Limited'
+  if (candles.length < 10) dataQuality = 'Insufficient'
+  
+  return {
+    timeSpan: `${timeSpanHours > 0 ? '+' : ''}${timeSpanHours.toFixed(1)}h`,
+    oldestCandle: `${((now - firstCandle.timestamp) / (1000 * 60 * 60)).toFixed(1)}h ago`,
+    newestCandle: `${newestCandleAge.toFixed(1)}m ago`,
+    candleCount: candles.length,
+    avgCandleGap: `${avgGapMinutes.toFixed(1)}m`,
+    dataQuality
+  }
 }
 
 export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => {
@@ -418,8 +385,10 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
         
         // 🔍 DEBUG: Check if data is in wrong order
         if (firstCandle.timestamp > lastCandle.timestamp) {
-          console.error(`❌ DATA ORDER ERROR: First candle is newer than last candle!`)
-          console.log(`🔧 Sorting candles by timestamp...`)
+          console.error(`DATA ORDER ERROR: First candle is newer than last candle!`)
+          console.log(`Sorting candles by timestamp...`)
+          
+          // Sort candles by timestamp to fix order
           backendCandles.sort((a, b) => a.timestamp - b.timestamp)
         }
       } else {
@@ -441,32 +410,26 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
         finalCandles = localCandles
       }
       
-      // 🔧 CRITICAL FIX: Ensure candles are sorted by timestamp
-      finalCandles.sort((a, b) => a.timestamp - b.timestamp)
+      // CRITICAL FIX: Ensure candles are sorted by timestamp
+      // This prevents issues with reverse-ordered data from backend
+      const sortedCandles = [...finalCandles].sort((a, b) => a.timestamp - b.timestamp)
       
-      // 🔍 VERIFY: Check final data order and quality
-      if (finalCandles.length > 0) {
-        const now = Date.now()
-        const finalTimeSpan = (finalCandles[finalCandles.length - 1].timestamp - finalCandles[0].timestamp) / (1000 * 60 * 60)
-        const finalOldestAge = (now - finalCandles[0].timestamp) / (1000 * 60 * 60)
-        const finalNewestAge = (now - finalCandles[finalCandles.length - 1].timestamp) / (1000 * 60)
+      // Verify the sort worked
+      if (sortedCandles.length > 1) {
+        const firstSorted = sortedCandles[0]
+        const lastSorted = sortedCandles[sortedCandles.length - 1]
         
-        console.log(`✅ Final Data ${opts.symbol}/${opts.interval}:`, {
-          total: finalCandles.length,
-          timeSpan: `${finalTimeSpan.toFixed(1)}h`,
-          oldestAge: `${finalOldestAge.toFixed(1)}h ago`,
-          newestAge: `${finalNewestAge.toFixed(1)}m ago`,
-          firstPrice: finalCandles[0].close,
-          lastPrice: finalCandles[finalCandles.length - 1].close
-        })
+        if (firstSorted.timestamp > lastSorted.timestamp) {
+          console.error('CRITICAL: Candles still in wrong order after sorting!')
+        }
       }
-      
+
       // Use latest candle for current price
-      const currentPrice = latestCandle?.close || (finalCandles.length > 0 ? finalCandles[finalCandles.length - 1].close : 0)
+      const currentPrice = latestCandle?.close || (sortedCandles.length > 0 ? sortedCandles[sortedCandles.length - 1].close : 0)
 
       setState(prev => ({
         ...prev,
-        candles: finalCandles,
+        candles: sortedCandles,
         volumeProfile: multiData.volumeProfile || [],
         heatmapData,
         orderbook,
@@ -479,9 +442,9 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
       // Mark as initialized after successful data load
       isInitializedRef.current = true
 
-      console.log(`✅ Initial data loaded for ${opts.symbol}/${opts.interval} - ${finalCandles.length} candles`)
+      console.log(`Initial data loaded for ${opts.symbol}/${opts.interval} - ${sortedCandles.length} candles`)
     } catch (error) {
-      console.error(`❌ Failed to load initial trading data for ${opts.symbol}/${opts.interval}:`, error)
+      console.error(`Failed to load initial trading data for ${opts.symbol}/${opts.interval}:`, error)
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -613,7 +576,7 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
 
       console.log(`📊 Loaded ${newInterval}: ${candles.length} candles`)
     } catch (error) {
-      console.error(`❌ Failed to load interval ${newInterval}:`, error)
+      console.error(`Failed to load interval ${newInterval}:`, error)
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -680,10 +643,10 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
       // Mark as initialized with fresh data
       isInitializedRef.current = true
       
-      console.log(`✅ Force refresh completed - ${freshCandles.length} fresh candles loaded`)
+      console.log(`Force refresh completed - ${freshCandles.length} fresh candles loaded`)
       
     } catch (error) {
-      console.error(`❌ Force complete refresh failed:`, error)
+      console.error(`Force complete refresh failed:`, error)
       setState(prev => ({
         ...prev,
         isLoading: false,

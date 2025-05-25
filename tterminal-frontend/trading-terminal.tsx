@@ -84,7 +84,7 @@ export default function TradingTerminal() {
   // Log connection status changes
   useEffect(() => {
     if (websocketPrice.isConnected) {
-      console.log(`✅ WebSocket active for ${selectedSymbol}`)
+      console.log(`WebSocket active for ${selectedSymbol}`)
     }
   }, [websocketPrice.isConnected, selectedSymbol])
 
@@ -135,7 +135,7 @@ export default function TradingTerminal() {
     // Navigation will be handled by the useEffect below that watches for candle changes
   }, [state.setSelectedTimeframe, state.setShowTimeframes, tradingData.loadInterval])
 
-  // 🎯 AUTOMATIC NAVIGATION TO CURRENT CANDLES after timeframe changes
+  // AUTOMATIC NAVIGATION TO CURRENT CANDLES after timeframe changes
   // This useEffect triggers when candles actually update, ensuring reliable navigation
   useEffect(() => {
     // Only navigate if we have candles and this looks like a timeframe switch
@@ -146,7 +146,7 @@ export default function TradingTerminal() {
       const canvas = canvasRef.current
       if (!canvas) return
       
-      console.log(`📍 Auto-navigating after timeframe change: ${tradingData.candles.length} candles loaded`)
+      console.log(`Auto-navigating after timeframe change: ${tradingData.candles.length} candles loaded`)
       
       // Use the same logic as the "Current" button for reliability
       const spacing = 12 * 1 // Use default zoom for calculation
@@ -169,7 +169,7 @@ export default function TradingTerminal() {
           timeOffset: targetOffset,
         })
         
-        console.log(`📍 Showing ALL ${totalCandles} candles (positioned on right side)`)
+        console.log(`Showing ALL ${totalCandles} candles (positioned on right side)`)
       } else {
         // Show the last portion if we have more candles than fit on screen
         const candlesToShow = idealVisibleCandles
@@ -183,7 +183,7 @@ export default function TradingTerminal() {
           timeOffset: targetOffset,
         })
         
-        console.log(`📍 Showing last ${candlesToShow} of ${totalCandles} candles`)
+        console.log(`Showing last ${candlesToShow} of ${totalCandles} candles`)
       }
     }, 100) // Small delay to ensure everything is ready
     
@@ -192,21 +192,18 @@ export default function TradingTerminal() {
 
   // Reset chart to current price position (latest bars)
   const handleResetToCurrentPrice = useCallback(() => {
-    // Calculate offset to show latest candles on the right side
+    // IMPROVED CALCULATION for different timeframe scales (same as timeframe switching)
+    const spacing = 12 * 1 // Use default zoom for calculation
     const canvas = canvasRef.current
     if (!canvas || tradingData.candles.length === 0) return
     
-    // 🔧 IMPROVED CALCULATION for different timeframe scales (same as timeframe switching)
-    const spacing = 12 * 1 // Use default zoom for calculation
+    // Calculate how many candles should be visible on screen (adaptive to timeframe)
     const canvasWidth = canvas.offsetWidth
     const rightMargin = 100 // Keep some margin from the right edge
     
-    // Calculate how many candles should be visible on screen (adaptive to timeframe)
-    const idealVisibleCandles = Math.floor((canvasWidth - rightMargin) / spacing)
-    
     // For longer timeframes with fewer total candles, show all available candles
     // For shorter timeframes with many candles, show the last portion
-    const candlesToShow = Math.min(idealVisibleCandles, tradingData.candles.length)
+    const candlesToShow = Math.min(Math.floor((canvasWidth - rightMargin) / spacing), tradingData.candles.length)
     const startIndex = Math.max(0, tradingData.candles.length - candlesToShow)
     
     // Calculate offset to position the visible candles properly
@@ -219,7 +216,7 @@ export default function TradingTerminal() {
       timeOffset: targetOffset,
     })
     
-    console.log(`🎯 Reset to current candles (${tradingData.candles.length} candles, showing last ${candlesToShow})`)
+    console.log(`Reset to current candles (${tradingData.candles.length} candles, showing last ${candlesToShow})`)
   }, [state, tradingData.candles])
 
   const handleToggleIndicator = useCallback((indicator: string) => {
@@ -335,10 +332,14 @@ export default function TradingTerminal() {
   // Handle mouse down for chart panning
   const handleChartMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 0) {
+      // CRITICAL FIX: Don't immediately set isDraggingChart
+      // Instead, just store the potential drag start position
+      // Only start dragging when mouse actually moves (drag threshold)
       state.setDragState(prev => ({
         ...prev,
-        isDraggingChart: true,
-        dragStart: { x: e.clientX, y: e.clientY }
+        isDraggingChart: false, // Don't start dragging immediately
+        dragStart: { x: e.clientX, y: e.clientY },
+        potentialDrag: true // Flag to indicate we might start dragging
       }))
     }
   }, [state.setDragState])
@@ -413,6 +414,41 @@ export default function TradingTerminal() {
         return
       }
 
+      // CRITICAL FIX: Always update crosshair position for FASTEST response
+      // Even during chart dragging, the crosshair should move instantly
+      const canvas = canvasRef.current
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect()
+        const x = e.clientX - rect.left
+        const y = e.clientY - rect.top
+        
+        // Update mouse position for crosshair - INSTANT response
+        state.setMousePosition({ x, y })
+        
+        // Update hovered candle for real-time feedback
+        const spacing = 12 * state.viewportState.timeZoom
+        const candleIndex = Math.floor((x - 50 + state.viewportState.timeOffset) / spacing)
+        if (candleIndex >= 0 && candleIndex < tradingData.candles.length) {
+          state.setHoveredCandle(tradingData.candles[candleIndex])
+        }
+      }
+
+      // DRAG THRESHOLD SYSTEM: Only start dragging if mouse moves significantly
+      if (state.dragState.potentialDrag && !state.dragState.isDraggingChart) {
+        const deltaX = e.clientX - state.dragState.dragStart.x
+        const deltaY = e.clientY - state.dragState.dragStart.y
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+        
+        // Start dragging only if mouse moved more than 5 pixels (drag threshold)
+        if (distance > 5) {
+          state.setDragState(prev => ({
+            ...prev,
+            isDraggingChart: true,
+            potentialDrag: false // Clear the potential flag
+          }))
+        }
+      }
+
       if (state.dragState.isDraggingChart) {
         const deltaX = e.clientX - state.dragState.dragStart.x
         const deltaY = e.clientY - state.dragState.dragStart.y
@@ -469,6 +505,15 @@ export default function TradingTerminal() {
     }
 
     const handleMouseUp = () => {
+      // CRITICAL FIX: Clear potentialDrag flag on mouse up
+      // This ensures single clicks don't leave the chart in a "potential drag" state
+      if (state.dragState.potentialDrag) {
+        state.setDragState(prev => ({
+          ...prev,
+          potentialDrag: false
+        }))
+      }
+      
       // Handle measuring tool mouse up separately
       if (state.isCreatingMeasurement) {
         handleMeasuringToolMouseUp()
@@ -477,7 +522,7 @@ export default function TradingTerminal() {
       }
     }
 
-    if (state.dragState.isDraggingChart || state.dragState.isDraggingPrice || state.dragState.isDraggingTime || state.dragState.isDraggingCvd || state.dragState.isDraggingLiquidations || state.isCreatingMeasurement) {
+    if (state.dragState.isDraggingChart || state.dragState.isDraggingPrice || state.dragState.isDraggingTime || state.dragState.isDraggingCvd || state.dragState.isDraggingLiquidations || state.isCreatingMeasurement || state.dragState.potentialDrag) {
       document.addEventListener("mousemove", handleMouseMove)
       document.addEventListener("mouseup", handleMouseUp)
     }
@@ -493,10 +538,17 @@ export default function TradingTerminal() {
     state.dragState.isDraggingCvd, 
     state.dragState.isDraggingLiquidations,
     state.dragState.dragStart,
+    state.dragState.potentialDrag,
     state.isCreatingMeasurement, 
     state.setViewportState, 
     state.setDragState, 
     state.setComponentSizes, 
+    state.setMousePosition,
+    state.setHoveredCandle,
+    state.viewportState.timeZoom,
+    state.viewportState.timeOffset,
+    state.navigationMode,
+    tradingData.candles,
     handleMeasuringToolMouseUp, 
     handleAxisDragEnd
   ])
@@ -935,10 +987,10 @@ export default function TradingTerminal() {
                   // Test current timeframe
                   const response = await fetch(`http://localhost:8080/api/v1/aggregation/candles/BTCUSDT/${state.selectedTimeframe}?limit=5`)
                   const data = await response.json()
-                  console.log(`✅ Backend test for ${state.selectedTimeframe}:`, data)
+                  console.log(`Backend test for ${state.selectedTimeframe}:`, data)
                   alert(`Backend test successful! Check console for details.`)
                 } catch (error) {
-                  console.error('❌ Backend test failed:', error)
+                  console.error('Backend test failed:', error)
                   alert(`Backend test failed: ${error}`)
                 }
               }}

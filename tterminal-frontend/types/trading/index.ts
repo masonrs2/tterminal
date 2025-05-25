@@ -119,4 +119,5 @@ export interface DragState {
   isDraggingCvd: boolean
   isDraggingLiquidations: boolean
   dragStart: { x: number; y: number }
+  potentialDrag?: boolean
 } 

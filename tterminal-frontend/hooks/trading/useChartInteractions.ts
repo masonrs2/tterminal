@@ -131,9 +131,8 @@ export const useChartInteractions = ({
       }
 
       // Don't interfere with existing chart dragging - let trading terminal handle it
-      if (dragState.isDraggingChart) {
-        return
-      }
+      // CRITICAL FIX: Don't return early during chart dragging!
+      // The crosshair should ALWAYS update for fastest response
 
       // Handle measuring tool creation
       if (isCreatingMeasurement) {
