@@ -66,6 +66,7 @@ export const useChartInteractions = ({
   // PERFORMANCE: Throttling refs to prevent excessive updates
   const lastMouseUpdateRef = useRef<number>(0)
   const mouseUpdateThrottleMs = 16 // ~60fps throttling
+  const lastMouseValueRef = useRef<{ x: number; y: number; price: number } | null>(null)
 
   /**
    * Calculate current candle height in pixels for smart zoom threshold detection
@@ -274,7 +275,15 @@ export const useChartInteractions = ({
       // PERFORMANCE: Use refs to avoid dependency issues
       const currentCandles = candleDataRef.current
       if (currentCandles.length === 0) {
-        setMousePosition({ x, y, price: 0 })
+        // Only update if values actually changed
+        const newValue = { x, y, price: 0 }
+        if (!lastMouseValueRef.current || 
+            lastMouseValueRef.current.x !== newValue.x || 
+            lastMouseValueRef.current.y !== newValue.y || 
+            lastMouseValueRef.current.price !== newValue.price) {
+          setMousePosition(newValue)
+          lastMouseValueRef.current = newValue
+        }
         return
       }
       
@@ -285,16 +294,26 @@ export const useChartInteractions = ({
       const priceRange = (priceMax - priceMin) / viewportState.priceZoom
       const price = priceMax - ((y - 50 + viewportState.priceOffset) / chartHeight) * priceRange
 
-      // PERFORMANCE: Only update if position changed significantly (throttling)
+      // PERFORMANCE: Only update if values actually changed (both position AND price)
       const threshold = 2 // pixels
-      if (Math.abs(x - (lastMousePositionRef.current?.x || 0)) > threshold || 
-          Math.abs(y - (lastMousePositionRef.current?.y || 0)) > threshold) {
-        setMousePosition({ x, y, price })
+      const priceThreshold = 0.01 // price threshold
+      
+      const lastValue = lastMouseValueRef.current
+      const positionChanged = !lastValue || 
+        Math.abs(x - lastValue.x) > threshold || 
+        Math.abs(y - lastValue.y) > threshold
+      const priceChanged = !lastValue || Math.abs(price - lastValue.price) > priceThreshold
+      
+      if (positionChanged || priceChanged) {
+        const newValue = { x, y, price }
+        setMousePosition(newValue)
+        lastMouseValueRef.current = newValue
         lastMousePositionRef.current = { x, y }
       }
     },
-    // PERFORMANCE: Minimal dependencies - only viewport state that affects price calculation
-    [viewportState.priceZoom, viewportState.priceOffset, setMousePosition]
+    // PERFORMANCE: Removed setMousePosition from dependencies to prevent infinite loops
+    // Only include viewport state that affects price calculation
+    [viewportState.priceZoom, viewportState.priceOffset]
   )
 
   /**
