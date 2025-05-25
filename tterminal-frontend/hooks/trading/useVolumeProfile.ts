@@ -10,7 +10,8 @@ import type {
   VolumeProfileData, 
   VolumeProfileLevel, 
   TradeData, 
-  CandleData 
+  CandleData,
+  ViewportState
 } from '../../types/trading'
 
 interface UseVolumeProfileOptions {
@@ -20,6 +21,9 @@ interface UseVolumeProfileOptions {
   enableRealTime: boolean
   valueAreaPercentage: number // default 70%
   candleData: CandleData[] // PERFORMANCE: Use existing candle data instead of fetching
+  viewportState: ViewportState // DYNAMIC: Current viewport for visible candles
+  chartWidth: number // DYNAMIC: Chart dimensions
+  chartHeight: number // DYNAMIC: Chart dimensions
 }
 
 interface VolumeProfileState {
@@ -37,7 +41,7 @@ const defaultOptions: Partial<UseVolumeProfileOptions> = {
 }
 
 export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
-  const { symbol, timeRange, rowCount, enableRealTime, valueAreaPercentage, candleData } = options
+  const { symbol, timeRange, rowCount, enableRealTime, valueAreaPercentage, candleData, viewportState, chartWidth, chartHeight } = options
   
   const [state, setState] = useState<VolumeProfileState>({
     data: null,
@@ -47,7 +51,7 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
   })
 
   // CRITICAL PERFORMANCE FIX: Separate data loading from display settings
-  const dataKey = `${symbol}-${timeRange}-${candleData.length}` // Include candle data length
+  const dataKey = `${symbol}-${timeRange}-${candleData.length}-${viewportState.timeOffset}-${viewportState.timeZoom}-${chartWidth}` // Include viewport for dynamic updates
   const displayKey = `${rowCount}-${valueAreaPercentage}` // Only recalculate display when these change
 
   // Refs for stable references
@@ -73,7 +77,10 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
   // Process candle data into volume profile
   const processHistoricalData = useCallback((
     candles: CandleData[],
-    rowCount: number
+    rowCount: number,
+    viewportState: ViewportState,
+    chartWidth: number,
+    chartHeight: number
   ): VolumeProfileData | null => {
     try {
       if (!candles || candles.length === 0) {
@@ -81,28 +88,51 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
         return null
       }
 
-      console.log(`📊 Processing ${candles.length} candles for volume profile`)
+      // CRITICAL FIX: Filter to only visible candles in current viewport
+      const spacing = 12 * viewportState.timeZoom
+      const visibleStartIndex = Math.max(0, Math.floor(viewportState.timeOffset / spacing))
+      const visibleEndIndex = Math.min(candles.length - 1, Math.floor((viewportState.timeOffset + chartWidth) / spacing))
+      
+      const visibleCandles = candles.slice(visibleStartIndex, visibleEndIndex + 1)
+      
+      if (visibleCandles.length === 0) {
+        console.warn('No visible candles in current viewport')
+        return null
+      }
 
-      // Find price range from candle data
+      console.log(`📊 Processing ${visibleCandles.length} VISIBLE candles (${visibleStartIndex}-${visibleEndIndex}) for dynamic volume profile`)
+
+      // CRITICAL FIX: Find EXACT price range from visible candles with NO padding
+      // We only want to show volume profile for prices that were actually traded
       let minPrice = Infinity
       let maxPrice = -Infinity
 
-      candles.forEach(candle => {
+      visibleCandles.forEach(candle => {
         minPrice = Math.min(minPrice, candle.low)
         maxPrice = Math.max(maxPrice, candle.high)
       })
 
       if (minPrice === Infinity || maxPrice === -Infinity) {
-        console.warn('Invalid price range from candle data')
+        console.warn('Invalid price range from visible candle data')
         return null
       }
 
-      // Create price levels
-      const priceStep = (maxPrice - minPrice) / rowCount
-      const levels: VolumeProfileLevel[] = []
+      // NO PADDING - only show volume where price was actually traded
+      const actualPriceRange = maxPrice - minPrice
+      
+      console.log(`💹 EXACT price range: ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)} (${visibleCandles.length} visible candles)`)
 
-      // Initialize levels
-      for (let i = 0; i < rowCount; i++) {
+      // CRITICAL FIX: Create price levels that map exactly to traded prices
+      // Calculate optimal number of levels to prevent overlapping
+      const minPriceStep = 0.1 // Minimum price step (adjust based on asset)
+      const maxLevels = Math.floor(actualPriceRange / minPriceStep)
+      const effectiveRowCount = Math.min(rowCount, maxLevels, chartHeight / 2) // Ensure no overlapping
+      
+      const priceStep = actualPriceRange / effectiveRowCount
+      
+      // Initialize volume profile levels - only for actual traded range
+      const levels: VolumeProfileLevel[] = []
+      for (let i = 0; i < effectiveRowCount; i++) {
         const price = minPrice + (i * priceStep)
         levels.push({
           price,
@@ -115,41 +145,88 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
         })
       }
 
-      // Distribute volume from candles to price levels
-      candles.forEach(candle => {
-        // Distribute candle volume across its price range
-        const candleLow = candle.low
-        const candleHigh = candle.high
-        const candleVolume = candle.volume
+      // Distribute volume from ONLY visible candles across price levels
+      let totalVolume = 0
+      let totalDelta = 0
 
-        // Find which levels this candle affects
-        const startLevel = Math.max(0, Math.floor((candleLow - minPrice) / priceStep))
-        const endLevel = Math.min(rowCount - 1, Math.floor((candleHigh - minPrice) / priceStep))
-
-        // Distribute volume evenly across affected levels
-        const affectedLevels = endLevel - startLevel + 1
-        const volumePerLevel = candleVolume / affectedLevels
-
-        for (let i = startLevel; i <= endLevel; i++) {
-          levels[i].totalVolume += volumePerLevel
+      visibleCandles.forEach(candle => {
+        const candleRange = candle.high - candle.low
+        if (candleRange <= 0) {
+          // For doji candles (no range), assign to closest price level
+          const levelIndex = Math.floor((candle.close - minPrice) / priceStep)
+          const clampedIndex = Math.max(0, Math.min(levels.length - 1, levelIndex))
           
-          // Simple buy/sell estimation based on candle direction
-          const isBullish = candle.close > candle.open
-          if (isBullish) {
-            levels[i].buyVolume += volumePerLevel * 0.6
-            levels[i].sellVolume += volumePerLevel * 0.4
-          } else {
-            levels[i].buyVolume += volumePerLevel * 0.4
-            levels[i].sellVolume += volumePerLevel * 0.6
+          if (levels[clampedIndex]) {
+            levels[clampedIndex].totalVolume += candle.volume
+            
+            // Simple buy/sell estimation for doji
+            const isBullish = candle.close >= candle.open
+            const buyVolume = candle.volume * (isBullish ? 0.6 : 0.4)
+            const sellVolume = candle.volume - buyVolume
+            
+            levels[clampedIndex].buyVolume += buyVolume
+            levels[clampedIndex].sellVolume += sellVolume
+            levels[clampedIndex].delta += (buyVolume - sellVolume)
+            
+            totalVolume += candle.volume
+            totalDelta += (buyVolume - sellVolume)
           }
-          
-          levels[i].delta = levels[i].buyVolume - levels[i].sellVolume
+          return
+        }
+
+        // Estimate buy/sell volume based on candle characteristics
+        const isBullish = candle.close > candle.open
+        const bodySize = Math.abs(candle.close - candle.open)
+        const wickSize = candleRange - bodySize
+        
+        // More sophisticated buy/sell estimation
+        const buyRatio = isBullish ? 
+          0.6 + (bodySize / candleRange) * 0.3 : // Bullish: 60-90% buy
+          0.3 - (bodySize / candleRange) * 0.2   // Bearish: 10-30% buy
+        
+        const buyVolume = candle.volume * buyRatio
+        const sellVolume = candle.volume * (1 - buyRatio)
+        const delta = buyVolume - sellVolume
+
+        totalVolume += candle.volume
+        totalDelta += delta
+
+        // CRITICAL FIX: Map candle price range to exact price levels
+        const startLevel = Math.floor((candle.low - minPrice) / priceStep)
+        const endLevel = Math.floor((candle.high - minPrice) / priceStep)
+        
+        // Clamp to valid range
+        const clampedStartLevel = Math.max(0, startLevel)
+        const clampedEndLevel = Math.min(levels.length - 1, endLevel)
+
+        const levelsInRange = Math.max(1, clampedEndLevel - clampedStartLevel + 1)
+        const volumePerLevel = candle.volume / levelsInRange
+        const buyVolumePerLevel = buyVolume / levelsInRange
+        const sellVolumePerLevel = sellVolume / levelsInRange
+        const deltaPerLevel = delta / levelsInRange
+
+        // Distribute volume across the exact price levels this candle touched
+        for (let i = clampedStartLevel; i <= clampedEndLevel; i++) {
+          if (levels[i]) {
+            levels[i].totalVolume += volumePerLevel
+            levels[i].buyVolume += buyVolumePerLevel
+            levels[i].sellVolume += sellVolumePerLevel
+            levels[i].delta += deltaPerLevel
+          }
         }
       })
 
+      // Filter out levels with no volume - only show where trading actually occurred
+      const levelsWithVolume = levels.filter(level => level.totalVolume > 0)
+      
+      if (levelsWithVolume.length === 0) {
+        console.warn('No volume levels found in visible candles')
+        return null
+      }
+
       // Find POC (Point of Control) - highest volume level
-      let pocLevel = levels[0]
-      levels.forEach(level => {
+      let pocLevel = levelsWithVolume[0]
+      levelsWithVolume.forEach(level => {
         if (level.totalVolume > pocLevel.totalVolume) {
           pocLevel = level
         }
@@ -157,43 +234,36 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
       pocLevel.isPOC = true
 
       // Calculate Value Area (70% of volume around POC)
-      const totalVolume = levels.reduce((sum, level) => sum + level.totalVolume, 0)
-      const valueAreaVolume = totalVolume * (valueAreaPercentage / 100)
+      const sortedByVolume = [...levelsWithVolume].sort((a, b) => b.totalVolume - a.totalVolume)
+      let valueAreaVolume = 0
+      const targetValueAreaVolume = totalVolume * (valueAreaPercentage / 100)
       
-      // Sort levels by volume to find value area
-      const sortedLevels = [...levels].sort((a, b) => b.totalVolume - a.totalVolume)
-      let accumulatedVolume = 0
-      let valueAreaLevels: VolumeProfileLevel[] = []
-
-      for (const level of sortedLevels) {
-        if (accumulatedVolume < valueAreaVolume) {
+      for (const level of sortedByVolume) {
+        if (valueAreaVolume < targetValueAreaVolume) {
           level.isValueArea = true
-          valueAreaLevels.push(level)
-          accumulatedVolume += level.totalVolume
+          valueAreaVolume += level.totalVolume
         }
       }
 
-      // Find VAH and VAL
-      const valueAreaPrices = valueAreaLevels.map(l => l.price).sort((a, b) => a - b)
-      const vah = valueAreaPrices[valueAreaPrices.length - 1] || pocLevel.price
-      const val = valueAreaPrices[0] || pocLevel.price
+      // Find VAH and VAL from levels with volume
+      const valueAreaLevels = levelsWithVolume.filter(l => l.isValueArea)
+      const vah = valueAreaLevels.length > 0 ? Math.max(...valueAreaLevels.map(l => l.price)) : maxPrice
+      const val = valueAreaLevels.length > 0 ? Math.min(...valueAreaLevels.map(l => l.price)) : minPrice
 
-      const totalDelta = levels.reduce((sum, level) => sum + level.delta, 0)
-
-      console.log(`✅ Volume profile processed: ${levels.length} levels, POC: $${pocLevel.price.toFixed(2)}, Total Volume: ${totalVolume.toFixed(0)}`)
+      console.log(`✅ Dynamic volume profile: ${levelsWithVolume.length} levels with volume, POC: ${pocLevel.price.toFixed(2)}, Total: ${totalVolume.toFixed(0)}`)
 
       return {
-        levels,
+        levels: levelsWithVolume, // Only return levels that have actual volume
         poc: pocLevel.price,
         vah,
         val,
         totalVolume,
         totalDelta,
         priceRange: { min: minPrice, max: maxPrice },
-        rawCandles: candles, // Store for recalculation
+        rawCandles: visibleCandles // Store only visible candles
       }
     } catch (error) {
-      console.error('Error processing candle data:', error)
+      console.error('Error processing visible candle data:', error)
       return null
     }
   }, [valueAreaPercentage])
@@ -204,8 +274,8 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
     rowCount: number,
     valueAreaPercentage: number
   ): VolumeProfileData | null => {
-    return processHistoricalData(candles, rowCount)
-  }, [processHistoricalData])
+    return processHistoricalData(candles, rowCount, viewportState, chartWidth, chartHeight)
+  }, [processHistoricalData, viewportState, chartWidth, chartHeight])
 
   // Memoize processed data to avoid recalculation
   const processedData = useMemo(() => {
@@ -295,14 +365,17 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
         return
       }
 
-      console.log(`🔄 Loading volume profile for ${symbol} with ${candleData.length} candles`)
+      console.log(`🔄 Loading DYNAMIC volume profile for ${symbol} with ${candleData.length} candles (viewport: ${viewportState.timeOffset.toFixed(0)}, zoom: ${viewportState.timeZoom.toFixed(2)})`)
       
       setState(prev => ({ ...prev, isLoading: true, error: null }))
 
       try {
         const volumeProfileData = processHistoricalData(
           candleData,
-          rowCount
+          rowCount,
+          viewportState,
+          chartWidth,
+          chartHeight
         )
 
         if (volumeProfileData) {
@@ -312,28 +385,26 @@ export const useVolumeProfile = (options: UseVolumeProfileOptions) => {
             error: null,
             lastUpdate: Date.now(),
           })
-          console.log('✅ Volume profile loaded successfully')
+          console.log('✅ Dynamic volume profile loaded successfully')
         } else {
           setState(prev => ({
             ...prev,
             isLoading: false,
-            error: 'Failed to process candle data',
+            error: 'No volume profile data generated'
           }))
-          console.log('❌ Volume profile loading failed: No data processed')
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        console.error('Error processing historical data:', error)
         setState(prev => ({
           ...prev,
           isLoading: false,
-          error: errorMessage,
+          error: error instanceof Error ? error.message : 'Unknown error'
         }))
-        console.error('❌ Volume profile loading failed:', error)
       }
     }
 
     loadHistoricalData()
-  }, [symbol, timeRange, rowCount, candleData, processHistoricalData])
+  }, [dataKey, processHistoricalData, symbol, candleData, rowCount, viewportState, chartWidth, chartHeight]) // Include all dynamic dependencies
 
   // Subscribe to real-time trade updates
   useEffect(() => {

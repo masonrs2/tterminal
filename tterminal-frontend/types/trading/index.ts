@@ -109,6 +109,7 @@ export interface IndicatorSettings {
     valueArea: number
     deltaMode: boolean
     showStatsBox: boolean
+    showVolumeText: boolean
     opacity: number
   }
   liquidations: {

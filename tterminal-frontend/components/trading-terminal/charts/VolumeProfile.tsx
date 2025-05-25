@@ -22,6 +22,7 @@ interface VolumeProfileProps {
   showPOC: boolean
   showValueArea: boolean
   showStatsBox?: boolean
+  showVolumeText?: boolean
   opacity: number
   candleData: CandleData[]
   onPriceClick?: (price: number) => void
@@ -41,6 +42,7 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
   showPOC = true,
   showValueArea = true,
   showStatsBox = true,
+  showVolumeText = false,
   opacity = 0.7,
   candleData,
   onPriceClick,
@@ -65,6 +67,9 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
     enableRealTime,
     valueAreaPercentage,
     candleData,
+    viewportState,
+    chartWidth,
+    chartHeight,
   })
 
   // PERFORMANCE: Memoize volume profile configuration
@@ -74,13 +79,53 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
     const maxBarWidth = chartWidth * 0.25 // 25% of chart width for volume bars
     const volumeScale = maxBarWidth / maxVolumeLevel.totalVolume
     
+    // CRITICAL FIX: Calculate bar height to prevent overlapping
+    // Only use levels that actually have volume and are visible
+    const levelsWithVolume = levels.filter(level => 
+      level.totalVolume > 0 && // Only levels with actual volume
+      level.price >= priceRange.min && 
+      level.price <= priceRange.max
+    )
+    
+    if (levelsWithVolume.length === 0) {
+      return null // No volume to display
+    }
+    
+    // CRITICAL FIX: Calculate exact bar height to fill available space with NO overlapping
+    // Each bar should take up exactly its portion of the price range
+    const priceRangeSpan = priceRange.max - priceRange.min
+    const pricePerPixel = priceRangeSpan / chartHeight
+    
+    // Calculate the price range each level covers
+    const sortedLevels = [...levelsWithVolume].sort((a, b) => a.price - b.price)
+    let averagePriceStep = 0
+    
+    if (sortedLevels.length > 1) {
+      // Calculate average price step between levels
+      let totalSteps = 0
+      for (let i = 1; i < sortedLevels.length; i++) {
+        totalSteps += sortedLevels[i].price - sortedLevels[i-1].price
+      }
+      averagePriceStep = totalSteps / (sortedLevels.length - 1)
+    } else {
+      // Single level - use a reasonable default
+      averagePriceStep = priceRangeSpan / 50
+    }
+    
+    // Convert price step to pixels and ensure no overlapping
+    const barHeight = Math.max(1, Math.floor(averagePriceStep / pricePerPixel * 0.9)) // 90% to ensure small gap
+    
+    console.log(`📏 Anti-overlap bar height: ${barHeight}px for ${levelsWithVolume.length} levels (step: ${averagePriceStep.toFixed(2)}, range: ${priceRangeSpan.toFixed(2)})`)
+    
     return {
       maxBarWidth,
       volumeScale,
-      barHeight: Math.max(4, chartHeight / rowCount), // Minimum 4px height
+      barHeight, // FIXED: Calculated to prevent overlapping
       startX: chartWidth - 80, // Start from price axis (80px is price axis width)
+      levelsWithVolume: levelsWithVolume.length,
+      averagePriceStep
     }
-  }, [maxVolumeLevel?.totalVolume, levels.length, chartWidth, chartHeight, rowCount]) // PERFORMANCE: Only recalculate when necessary
+  }, [maxVolumeLevel?.totalVolume, levels, chartWidth, chartHeight, priceRange]) // PERFORMANCE: Include priceRange for visible levels
 
   // Convert price to Y coordinate
   const priceToY = useCallback((price: number): number => {
@@ -114,25 +159,34 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
     ctx.globalAlpha = 1.0 // Start with full opacity
     ctx.globalCompositeOperation = 'source-over'
 
-    const { volumeScale, barHeight, startX } = volumeProfileConfig
+    const { volumeScale, barHeight, startX, levelsWithVolume, averagePriceStep } = volumeProfileConfig
 
-    // Filter levels that are visible in current price range
-    const visibleLevels = levels.filter(level => 
-      level.price >= priceRange.min && level.price <= priceRange.max
+    // CRITICAL FIX: Only render levels that have actual volume
+    const levelsToRender = levels.filter(level => 
+      level.totalVolume > 0 && // Only levels with actual trading volume
+      level.price >= priceRange.min && 
+      level.price <= priceRange.max
     )
 
     // DEBUG: Only log occasionally to avoid console spam
     if (Math.random() < 0.01) { // Log ~1% of renders
       console.log('Volume Profile Render:', {
         canvasSize: { width: displayWidth, height: displayHeight },
-        visibleLevels: visibleLevels.length,
+        levelsToRender: levelsToRender.length,
         totalLevels: levels.length,
         priceRange,
         volumeConfig: volumeProfileConfig,
-        hasVisibleBars: visibleLevels.some(l => l.totalVolume > 0),
+        hasVisibleBars: levelsToRender.length > 0,
         startX,
-        maxBarWidth: volumeProfileConfig.maxBarWidth
+        maxBarWidth: volumeProfileConfig.maxBarWidth,
+        barHeight: barHeight, // FIXED: Log the anti-overlap bar height
+        averagePriceStep: averagePriceStep
       })
+    }
+
+    if (levelsToRender.length === 0) {
+      console.log('No volume levels to render in current viewport')
+      return // Don't render anything if no volume levels
     }
 
     // Render value area background first (if enabled)
@@ -152,7 +206,7 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
 
     // Render volume bars
     ctx.globalAlpha = opacity // Apply opacity only to volume bars
-    visibleLevels.forEach((level, index) => {
+    levelsToRender.forEach((level, index) => {
       const y = priceToY(level.price)
       const barWidth = level.totalVolume * volumeScale
       
@@ -175,7 +229,7 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
         ctx.fillRect(startX - buyWidth - sellWidth, y - barHeight/2, sellWidth, barHeight)
         
         // Delta text - position to the left of the bars
-        if (actualBarWidth > 20) {
+        if (showVolumeText && actualBarWidth > 20) {
           ctx.fillStyle = level.delta > 0 ? '#22c55e' : '#ef4444'
           ctx.font = '9px monospace'
           ctx.textAlign = 'right'
@@ -193,7 +247,7 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
       }
 
       // Volume text - position in center of bar
-      if (actualBarWidth > 25) {
+      if (showVolumeText && actualBarWidth > 25) {
         ctx.fillStyle = '#ffffff'
         ctx.font = 'bold 10px monospace'
         ctx.textAlign = 'center'
@@ -243,7 +297,7 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
     ctx.restore()
   }, [
     levels, volumeProfileConfig, priceRange, chartHeight, chartWidth, opacity,
-    showDelta, showPOC, showValueArea, poc, vah, val, isRealTimeActive, priceToY
+    showDelta, showPOC, showValueArea, showVolumeText, poc, vah, val, isRealTimeActive, priceToY
   ])
 
   // Handle canvas click for price selection

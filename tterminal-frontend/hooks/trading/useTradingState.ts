@@ -64,6 +64,7 @@ const defaultIndicatorSettings = {
     valueArea: 0.63,
     deltaMode: false,
     showStatsBox: true,
+    showVolumeText: false,
     opacity: 0.7,
   },
   liquidations: {

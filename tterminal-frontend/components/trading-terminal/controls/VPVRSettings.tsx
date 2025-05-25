@@ -20,6 +20,7 @@ interface VPVRSettingsProps {
     valueArea: number
     deltaMode: boolean
     showStatsBox: boolean
+    showVolumeText: boolean
     opacity: number
   }
   onSettingsChange: (settings: any) => void
@@ -159,6 +160,15 @@ export const VPVRSettings = forwardRef<HTMLDivElement, VPVRSettingsProps>(({
                 className="w-2.5 h-2.5 rounded"
               />
               <span>Show Stats Box</span>
+            </label>
+            <label className="flex items-center space-x-1" style={{ fontSize: '9px' }}>
+              <input
+                type="checkbox"
+                checked={settings.showVolumeText}
+                onChange={(e) => updateSetting('showVolumeText', e.target.checked)}
+                className="w-2.5 h-2.5 rounded"
+              />
+              <span>Show Volume Text</span>
             </label>
           </div>
         </div>
@@ -326,6 +336,7 @@ export const VPVRSettings = forwardRef<HTMLDivElement, VPVRSettingsProps>(({
               valueArea: 0.63,
               deltaMode: false,
               showStatsBox: true,
+              showVolumeText: false,
               opacity: 0.7,
             })}
             className="w-full bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"

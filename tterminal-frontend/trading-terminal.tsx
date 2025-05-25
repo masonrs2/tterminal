@@ -1278,6 +1278,7 @@ export default function TradingTerminal() {
               valueArea: state.indicatorSettings.vpvr.valueArea,
               deltaMode: state.indicatorSettings.vpvr.deltaMode,
               showStatsBox: state.indicatorSettings.vpvr.showStatsBox,
+              showVolumeText: state.indicatorSettings.vpvr.showVolumeText,
               opacity: state.indicatorSettings.vpvr.opacity,
             }}
             onSettingsChange={(newSettings) => {

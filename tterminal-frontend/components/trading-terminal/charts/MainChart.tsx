@@ -669,11 +669,10 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
           showPOC={indicatorSettings.vpvr.showPOC}
           showValueArea={true}
           showStatsBox={indicatorSettings.vpvr.showStatsBox}
+          showVolumeText={indicatorSettings.vpvr.showVolumeText}
           opacity={indicatorSettings.vpvr.opacity}
           candleData={candleData}
-          onPriceClick={(price) => {
-            console.log('Volume profile price clicked:', price)
-          }}
+          onPriceClick={(price) => console.log('Volume profile price clicked:', price)}
         />
       )}
 
