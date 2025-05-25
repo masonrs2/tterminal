@@ -152,7 +152,7 @@ export default function TradingTerminal() {
       // Use the same improved logic as the "Current" button for consistency
       const canvasWidth = canvas.offsetWidth
       const canvasHeight = canvas.offsetHeight
-      const rightMargin = 80  // Reduced margin for more space
+      const rightMargin = 300 // Doubled margin for maximum space for future candles
       const leftMargin = 50   // Left margin for price axis
       const availableWidth = canvasWidth - rightMargin - leftMargin
       
@@ -213,7 +213,7 @@ export default function TradingTerminal() {
     // Calculate optimal display parameters
     const canvasWidth = canvas.offsetWidth
     const canvasHeight = canvas.offsetHeight
-    const rightMargin = 80  // Reduced margin for more space
+    const rightMargin = 300 // Doubled margin for maximum space for future candles
     const leftMargin = 50   // Left margin for price axis
     const availableWidth = canvasWidth - rightMargin - leftMargin
     
