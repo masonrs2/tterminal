@@ -1,9 +1,10 @@
 /**
  * Main Chart Component
  * Handles the primary price chart canvas with candlesticks, volume, and overlays
+ * Enhanced with real-time features: live price line, countdown timer, current candle animation
  */
 
-import React, { useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react'
+import React, { useEffect, useRef, forwardRef, useImperativeHandle, useCallback, useState } from 'react'
 import type { 
   CandleData, 
   MousePosition, 
@@ -14,7 +15,7 @@ import type {
   HeatmapData,
   MeasuringSelection 
 } from '../../../types/trading'
-import { getTimeRemaining } from '../../../utils/trading/calculations'
+import { getTimeRemaining, getCurrentCandleProgress, formatTime, formatDate } from '../../../utils/trading/calculations'
 import { MeasuringToolTooltip } from './MeasuringToolTooltip'
 
 interface MainChartProps {
@@ -35,6 +36,7 @@ interface MainChartProps {
   indicatorSettings: IndicatorSettings
   showOrderbook: boolean
   measuringSelection: MeasuringSelection
+  navigationMode: "auto" | "manual"
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   onMouseMove: (event: React.MouseEvent<HTMLCanvasElement>) => void
   onMouseDown: (event: React.MouseEvent<HTMLCanvasElement>) => void
@@ -47,35 +49,194 @@ interface MainChartProps {
   className?: string
 }
 
-export const MainChart: React.FC<MainChartProps> = ({
-  candleData,
-  volumeProfile,
-  heatmapData,
-  currentPrice,
-  selectedTimeframe,
-  mousePosition,
-  hoveredCandle,
-  activeIndicators,
-  drawingTools,
-  selectedDrawingIndex,
-  viewportState,
-  backgroundColor,
-  bullCandleColor,
-  bearCandleColor,
-  indicatorSettings,
-  showOrderbook,
-  measuringSelection,
-  canvasRef,
-  onMouseMove,
-  onMouseDown,
-  onMouseUp,
-  onMouseLeave,
-  onMouseMoveCapture,
-  onContextMenu,
-  onAxisWheel,
-  onClearMeasuring,
-  className = ""
-}) => {
+// Custom comparison function for React.memo to prevent unnecessary re-renders
+const arePropsEqual = (prevProps: MainChartProps, nextProps: MainChartProps) => {
+  // Always re-render if candleData array reference changed (this means real candle updates)
+  if (prevProps.candleData !== nextProps.candleData) return false
+  
+  // Always re-render if current price changed significantly
+  if (Math.abs(prevProps.currentPrice - nextProps.currentPrice) > 0.01) return false
+  
+  // Re-render if viewport state changed (zoom/pan)
+  if (prevProps.viewportState !== nextProps.viewportState) return false
+  
+  // Re-render if mouse position changed
+  if (prevProps.mousePosition !== nextProps.mousePosition) return false
+  
+  // Re-render if visual settings changed
+  if (prevProps.backgroundColor !== nextProps.backgroundColor ||
+      prevProps.bullCandleColor !== nextProps.bullCandleColor ||
+      prevProps.bearCandleColor !== nextProps.bearCandleColor) return false
+  
+  // Skip re-render for other prop changes to reduce glitching
+  return true
+}
+
+export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
+  const {
+    candleData,
+    volumeProfile,
+    heatmapData,
+    currentPrice,
+    selectedTimeframe,
+    mousePosition,
+    hoveredCandle,
+    activeIndicators,
+    drawingTools,
+    selectedDrawingIndex,
+    viewportState,
+    backgroundColor,
+    bullCandleColor,
+    bearCandleColor,
+    indicatorSettings,
+    showOrderbook,
+    measuringSelection,
+    navigationMode,
+    canvasRef,
+    onMouseMove,
+    onMouseDown,
+    onMouseUp,
+    onMouseLeave,
+    onMouseMoveCapture,
+    onContextMenu,
+    onAxisWheel,
+    onClearMeasuring,
+    className = ""
+  } = props
+
+  // 🔍 COMPREHENSIVE CHART DATA ANALYSIS
+  React.useEffect(() => {
+    if (candleData.length > 0) {
+      const now = Date.now()
+      const timeSpan = (candleData[candleData.length - 1].timestamp - candleData[0].timestamp) / (1000 * 60 * 60)
+      const historical = candleData.filter(c => now - c.timestamp >= 6 * 60 * 60 * 1000).length
+      const recent = candleData.filter(c => now - c.timestamp < 60 * 60 * 1000).length
+      
+      console.log(`🎨 Chart Data ${selectedTimeframe}:`, {
+        total: candleData.length,
+        timeSpan: `${timeSpan.toFixed(1)}h`,
+        historical,
+        recent
+      })
+    }
+  }, [candleData.length, selectedTimeframe])
+
+  // Helper function to get interval in milliseconds (moved to top to fix hoisting issue)
+  const getIntervalInMs = (interval: string): number => {
+    switch (interval) {
+      case '1m': return 60 * 1000
+      case '5m': return 5 * 60 * 1000
+      case '15m': return 15 * 60 * 1000
+      case '30m': return 30 * 60 * 1000
+      case '1h': return 60 * 60 * 1000
+      case '4h': return 4 * 60 * 60 * 1000
+      case '1d': return 24 * 60 * 60 * 1000
+      case '1w': return 7 * 24 * 60 * 60 * 1000
+      default: return 60 * 1000
+    }
+  }
+
+  // Real-time state for countdown and price updates
+  const [realTimeCountdown, setRealTimeCountdown] = useState<string>('00:00')
+  const [candleProgress, setCandleProgress] = useState<number>(0)
+  const [currentTime, setCurrentTime] = useState<number>(Date.now())
+
+  // PERFORMANCE OPTIMIZATION: Memoize volume profile processing to prevent infinite re-renders
+  const processedVolumeProfile = React.useMemo(() => {
+    if (!volumeProfile || volumeProfile.length === 0) return []
+    
+    // Limit to prevent stack overflow and validate data
+    return volumeProfile.slice(0, 10000).filter(v => 
+      v && 
+      typeof v.volume === 'number' && 
+      typeof v.price === 'number' && 
+      !isNaN(v.volume) && 
+      !isNaN(v.price)
+    )
+  }, [volumeProfile])
+
+  // Calculate STABLE price range that doesn't change with real-time updates
+  // This prevents viewport jumping by using a fixed range calculation
+  const calculateStablePriceRange = useCallback(() => {
+    if (candleData.length === 0) return { finalMax: 0, finalMin: 0, priceRange: 1 }
+    
+    // CRITICAL FIX: Exclude the last candle from range calculation to prevent jumping
+    // The last candle is being updated in real-time, so including it in range calculation
+    // causes the entire Y-axis to shift when price updates, making candles appear to move wrong
+    const historicalCandles = candleData.length > 1 ? candleData.slice(0, -1) : candleData
+    
+    // Create a STABLE baseline range using only historical data (not real-time updates)
+    // Only use the first 90% of historical data to establish a stable baseline
+    const stableDataLength = Math.max(1, Math.floor(historicalCandles.length * 0.9))
+    const stableCandles = historicalCandles.slice(0, stableDataLength)
+    
+    if (stableCandles.length === 0) {
+      // Fallback for edge case
+      return { finalMax: currentPrice + 100, finalMin: currentPrice - 100, priceRange: 200 }
+    }
+    
+    const allStablePrices = stableCandles.flatMap(c => [c.high, c.low, c.open, c.close])
+    
+    // IMPORTANT: Don't include currentPrice in range calculation - this prevents Y-axis jumping
+    // The current price should be displayed within the stable range, not change the range
+    
+    const stablePriceMax = Math.max(...allStablePrices)
+    const stablePriceMin = Math.min(...allStablePrices)
+    
+    // Use a FIXED padding that creates a stable viewing window
+    const stableRange = stablePriceMax - stablePriceMin
+    const fixedPadding = Math.max(stableRange * 0.25, 100) // Generous padding for stability
+    
+    // Create the stable baseline range (this should NEVER change during real-time updates)
+    const baselineMax = stablePriceMax + fixedPadding
+    const baselineMin = stablePriceMin - fixedPadding
+    const baselineRange = baselineMax - baselineMin
+    
+    // Apply ONLY zoom to the baseline (offset is handled separately for smooth panning)
+    const zoomFactor = Math.max(0.1, Math.min(10, viewportState.priceZoom)) // Clamp zoom for stability
+    const effectiveRange = baselineRange / zoomFactor
+    
+    // Calculate the center point for zoom operations
+    const baselineCenter = baselineMin + baselineRange / 2
+    
+    // Apply offset as a smooth translation without affecting the range size
+    const offsetInPriceUnits = (viewportState.priceOffset / 100) * effectiveRange * 0.5 // Scale offset appropriately
+    
+    const finalMax = baselineCenter + effectiveRange / 2 + offsetInPriceUnits
+    const finalMin = baselineCenter - effectiveRange / 2 + offsetInPriceUnits
+    const priceRange = finalMax - finalMin
+    
+    return { finalMax, finalMin, priceRange }
+  }, [
+    // CRITICAL: Only depend on historical data length and viewport, not current price or last candle changes
+    // This prevents recalculation when real-time updates occur
+    candleData.length > 1 ? candleData[0].timestamp : 0, // First candle timestamp
+    candleData.length > 1 ? candleData[candleData.length - 2].timestamp : 0, // Second-to-last candle (excluding last)
+    viewportState.priceZoom, // Include zoom for proper scaling
+    viewportState.priceOffset // Include offset for proper panning
+    // NOTE: currentPrice and last candle changes are intentionally excluded to prevent Y-axis jumping
+  ])
+
+  // Real-time countdown timer (updates every second)
+  useEffect(() => {
+    const updateRealTimeData = () => {
+      const countdown = getTimeRemaining(selectedTimeframe)
+      const progress = getCurrentCandleProgress(selectedTimeframe)
+      const now = Date.now()
+      
+      setRealTimeCountdown(countdown)
+      setCandleProgress(progress)
+      setCurrentTime(now)
+    }
+
+    // Initial update
+    updateRealTimeData()
+
+    // Set up interval for real-time updates
+    const interval = setInterval(updateRealTimeData, 1000) // Update every second
+
+    return () => clearInterval(interval)
+  }, [selectedTimeframe])
 
   // Dedicated axis mouse handlers to prevent conflicts
   const handleAxisMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -115,20 +276,17 @@ export const MainChart: React.FC<MainChartProps> = ({
       target: canvasElement,
       clientX: canvasRect.left + relativeX,
       clientY: canvasRect.top + relativeY,
-      preventDefault: e.preventDefault.bind(e),
-      stopPropagation: e.stopPropagation.bind(e)
+      preventDefault: () => e.preventDefault(),
+      stopPropagation: () => e.stopPropagation()
     } as React.MouseEvent<HTMLCanvasElement>
     
     onMouseDown(mockCanvasEvent)
-    e.stopPropagation()
   }, [onMouseDown, canvasRef])
 
-  // Dedicated axis wheel handler for ultra-fast price zooming
   const handleAxisWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
     
-    // Pass wheel event to parent for ultra-fast zooming
     if (onAxisWheel) {
       onAxisWheel('price', e.deltaY)
     }
@@ -154,10 +312,8 @@ export const MainChart: React.FC<MainChartProps> = ({
     ctx.fillStyle = backgroundColor
     ctx.fillRect(0, 0, canvas.offsetWidth, canvas.offsetHeight)
 
-    // Calculate dynamic price range from data
-    const priceMax = Math.max(...candleData.map(c => c.high))
-    const priceMin = Math.min(...candleData.map(c => c.low))
-    const priceRange = priceMax - priceMin
+    const { finalMax, finalMin, priceRange } = calculateStablePriceRange()
+    
     const chartHeight = canvas.offsetHeight - 100
     
     // Calculate line end position for consistent use across components (where price axis begins)
@@ -230,15 +386,20 @@ export const MainChart: React.FC<MainChartProps> = ({
     }
 
     // Draw volume profile (VPVR) - positioned right at the price axis boundary
-    if (activeIndicators.includes("VPVR")) {
-      const maxVolume = Math.max(...volumeProfile.map((v) => v.volume))
+    if (activeIndicators.includes("VPVR") && processedVolumeProfile.length > 0) {
+      // OPTIMIZED: Use the memoized and validated volume profile data
+      const maxVolume = processedVolumeProfile.reduce((max, v) => Math.max(max, v.volume), 0)
+      
+      // Skip rendering if no valid volume data
+      if (maxVolume <= 0) return
+      
       const profileWidth = 80 // Width for volume bars
       
       // Position VPVR to end exactly where the price axis overlay begins
       const priceAxisStart = canvas.offsetWidth - (showOrderbook ? 200 : 80)
 
-      volumeProfile.forEach((profile) => {
-        const y = 50 + ((priceMax - profile.price) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      processedVolumeProfile.forEach((profile) => {
+        const y = 50 + ((finalMax - profile.price) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
         const width = (profile.volume / maxVolume) * profileWidth
 
         if (indicatorSettings.vpvr.deltaMode) {
@@ -281,11 +442,17 @@ export const MainChart: React.FC<MainChartProps> = ({
       const x = index * spacing + 50 - viewportState.timeOffset
       if (x < -candleWidth || x > canvas.offsetWidth) return
 
-      // Dynamic price scaling based on actual data range
-      const high = 50 + ((priceMax - candle.high) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
-      const low = 50 + ((priceMax - candle.low) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
-      const open = 50 + ((priceMax - candle.open) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
-      const close = 50 + ((priceMax - candle.close) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      // Check if this is the current (last) candle for real-time effects
+      const isCurrentCandle = index === candleData.length - 1
+      const intervalMs = getIntervalInMs(selectedTimeframe)
+      const candleAge = currentTime - candle.timestamp
+      const isActivelyCurrent = isCurrentCandle && candleAge < intervalMs
+
+      // Dynamic price scaling based on actual data range with padding
+      const high = 50 + ((finalMax - candle.high) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const low = 50 + ((finalMax - candle.low) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const open = 50 + ((finalMax - candle.open) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const close = 50 + ((finalMax - candle.close) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
 
       // Highlight hovered candle
       if (hoveredCandle && hoveredCandle.timestamp === candle.timestamp) {
@@ -293,18 +460,43 @@ export const MainChart: React.FC<MainChartProps> = ({
         ctx.fillRect(x - 2, 0, candleWidth + 4, canvas.offsetHeight)
       }
 
-      // Draw wick
-      ctx.strokeStyle = candle.close > candle.open ? bullCandleColor : bearCandleColor
-      ctx.lineWidth = 1
+      // REAL-TIME VISUAL EFFECTS: Add subtle glow/pulse effect for current candle
+      if (isActivelyCurrent) {
+        // Add subtle background glow for the current candle
+        const glowAlpha = 0.3 + Math.sin(currentTime / 500) * 0.1 // Subtle pulse effect
+        ctx.fillStyle = `rgba(255, 255, 0, ${glowAlpha * 0.15})` // Yellow glow
+        ctx.fillRect(x - 3, 0, candleWidth + 6, canvas.offsetHeight)
+        
+        // Add border highlight for current candle
+        ctx.strokeStyle = "rgba(255, 255, 0, 0.6)" // Yellow border
+        ctx.lineWidth = 1
+        ctx.setLineDash([2, 2])
+        ctx.strokeRect(x - 1, Math.min(high, low) - 2, candleWidth + 2, Math.abs(high - low) + 4)
+        ctx.setLineDash([])
+      }
+
+      // Draw wick with enhanced styling for current candle
+      const wickColor = candle.close > candle.open ? bullCandleColor : bearCandleColor
+      ctx.strokeStyle = isActivelyCurrent ? wickColor + "FF" : wickColor // Full opacity for current candle
+      ctx.lineWidth = isActivelyCurrent ? 1.5 : 1 // Slightly thicker wick for current candle
       ctx.beginPath()
       ctx.moveTo(x + candleWidth / 2, high)
       ctx.lineTo(x + candleWidth / 2, low)
       ctx.stroke()
 
-      // Draw body
-      ctx.fillStyle = candle.close > candle.open ? bullCandleColor : bearCandleColor
+      // Draw body with enhanced styling for current candle
+      const bodyColor = candle.close > candle.open ? bullCandleColor : bearCandleColor
+      ctx.fillStyle = isActivelyCurrent ? bodyColor + "FF" : bodyColor // Full opacity for current candle
       const bodyTop = Math.min(open, close)
       const bodyHeight = Math.abs(close - open)
+      
+      // Add slight border for current candle body
+      if (isActivelyCurrent) {
+        ctx.strokeStyle = bodyColor
+        ctx.lineWidth = 0.5
+        ctx.strokeRect(x, bodyTop, candleWidth, bodyHeight)
+      }
+      
       ctx.fillRect(x, bodyTop, candleWidth, bodyHeight)
     })
 
@@ -312,7 +504,7 @@ export const MainChart: React.FC<MainChartProps> = ({
     ctx.strokeStyle = "#ffff00"
     ctx.lineWidth = 1
     ctx.setLineDash([3, 3])
-    const currentY = 50 + ((priceMax - currentPrice) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+    const currentY = 50 + ((finalMax - currentPrice) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
     ctx.beginPath()
     ctx.moveTo(0, currentY)
     ctx.lineTo(lineEndX, currentY)
@@ -357,9 +549,9 @@ export const MainChart: React.FC<MainChartProps> = ({
       ctx.beginPath()
 
       const x1 = drawing.time1 * spacing + 50 - viewportState.timeOffset
-      const y1 = 50 + ((priceMax - drawing.price1) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const y1 = 50 + ((finalMax - drawing.price1) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
       const x2 = drawing.time2 * spacing + 50 - viewportState.timeOffset
-      const y2 = 50 + ((priceMax - drawing.price2) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+      const y2 = 50 + ((finalMax - drawing.price2) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
 
       if (drawing.type === "Horizontal Ray") {
         ctx.moveTo(0, y1)
@@ -381,24 +573,11 @@ export const MainChart: React.FC<MainChartProps> = ({
     })
 
     // Draw measuring tool selection box
-    console.log('MainChart useEffect - measuring selection check:', { 
-      isActive: measuringSelection.isActive,
-      startX: measuringSelection.startX,
-      endX: measuringSelection.endX
-    })
-    
     if (measuringSelection.isActive) {
       const startX = Math.min(measuringSelection.startX, measuringSelection.endX)
       const startY = Math.min(measuringSelection.startY, measuringSelection.endY)
       const width = Math.abs(measuringSelection.endX - measuringSelection.startX)
       const height = Math.abs(measuringSelection.endY - measuringSelection.startY)
-
-      console.log('Drawing measuring selection:', { 
-        startX, startY, width, height, 
-        isActive: measuringSelection.isActive,
-        startTimeIndex, endTimeIndex,
-        startPrice, endPrice, isGainSelection
-      })
 
       // Determine color based on price direction
       const startTimeIndex = Math.min(measuringSelection.startTimeIndex, measuringSelection.endTimeIndex)
@@ -427,7 +606,7 @@ export const MainChart: React.FC<MainChartProps> = ({
     }
   }, [
     candleData,
-    volumeProfile,
+    processedVolumeProfile,
     heatmapData,
     currentPrice,
     mousePosition,
@@ -448,7 +627,9 @@ export const MainChart: React.FC<MainChartProps> = ({
     <div className={`flex-1 relative min-h-0 ${className}`}>
       <canvas
         ref={canvasRef}
-        className="w-full h-full cursor-move"
+        className={`w-full h-full ${
+          navigationMode === 'auto' ? 'cursor-ew-resize' : 'cursor-move'
+        }`}
         style={{ width: "100%", height: "100%" }}
         onMouseMove={onMouseMove}
         onMouseDown={onMouseDown}
@@ -475,35 +656,72 @@ export const MainChart: React.FC<MainChartProps> = ({
                   onWheel={handleAxisWheel}
           title="Drag or scroll to zoom price axis vertically"
       >
-        <div className="flex flex-col justify-between h-full py-2 text-xs">
+        <div className="flex flex-col justify-between h-full py-2 text-xs font-mono relative">
           {(() => {
-            // Ensure consistent rendering between server and client
-            if (candleData.length === 0) {
-              return Array.from({ length: 9 }, (_, i) => (
-                <div key={i} className="text-right pr-2">
-                  {(108000 + i * 1000).toFixed(1)}
-                </div>
-              ))
-            }
+            // Use the SAME stable range calculation as the main chart
+            const { finalMax, finalMin, priceRange: stableRange } = calculateStablePriceRange()
+            const priceStep = stableRange / 8
             
-            const priceMax = Math.max(...candleData.map(c => c.high))
-            const priceMin = Math.min(...candleData.map(c => c.low))
-            const priceStep = (priceMax - priceMin) / 8
             return Array.from({ length: 9 }, (_, i) => {
-              const price = priceMax - (i * priceStep)
-              const isCurrentPrice = Math.abs(price - currentPrice) < priceStep / 2
+              const price = finalMax - (i * priceStep)
+              const isCurrentPrice = Math.abs(price - currentPrice) < priceStep / 3
               return (
-                <div key={i} className={`text-right pr-2 ${isCurrentPrice ? 'bg-blue-500 text-white px-1 rounded' : ''}`}>
+                <div key={i} className={`text-right pr-2 text-xs font-mono ${isCurrentPrice ? 'bg-blue-500 text-white px-1 rounded' : ''}`}>
                   {price.toFixed(1)}
                 </div>
               )
             })
           })()}
-          <div className="text-right pr-2 bg-red-600 text-white px-1 rounded text-xs" style={{ marginTop: "2px" }} suppressHydrationWarning={true}>
-            {typeof window !== 'undefined' ? getTimeRemaining(selectedTimeframe) : '00:00'}
+          
+          {/* Current Price Indicator - Modern Professional Design */}
+          <div 
+            className="absolute right-1 bg-gray-900/90 border border-gray-600/50 backdrop-blur-sm rounded-md px-2 py-1 text-xs font-medium text-white shadow-lg transition-all duration-200 hover:bg-gray-800/90"
+            style={{
+              top: (() => {
+                if (candleData.length === 0) return '50%';
+                
+                // Use the SAME stable calculation as the main chart and price axis
+                const { finalMax, finalMin, priceRange: stableRange } = calculateStablePriceRange()
+                
+                // Calculate percentage position from top using stable range
+                const pricePosition = ((finalMax - currentPrice) / stableRange) * 100
+                return `${Math.max(2, Math.min(93, pricePosition))}%`
+              })(),
+              transform: 'translateY(-50%)'
+            }}
+          >
+            <div className="flex items-center space-x-1">
+              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+              <span className="font-mono">{currentPrice.toFixed(1)}</span>
+            </div>
+          </div>
+          
+          {/* Real-time countdown - Modern badge design */}
+          <div 
+            className="absolute right-1 bg-orange-500/90 border border-orange-400/50 backdrop-blur-sm rounded-md px-2 py-0.5 text-xs font-medium text-white shadow-lg transition-all duration-200"
+            style={{
+              top: (() => {
+                if (candleData.length === 0) return '58%';
+                
+                // Use the SAME stable calculation as all other components
+                const { finalMax, finalMin, priceRange: stableRange } = calculateStablePriceRange()
+                
+                // Position below the current price indicator with proper spacing using stable range
+                const pricePosition = ((finalMax - currentPrice) / stableRange) * 100
+                return `${Math.max(7, Math.min(88, pricePosition + 6))}%`
+              })(),
+              transform: 'translateY(-50%)'
+            }}
+          >
+            <div className="flex items-center space-x-1">
+              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.707-10.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L9.414 11H13a1 1 0 100-2H9.414l1.293-1.293z" clipRule="evenodd" />
+              </svg>
+              <span className="font-mono text-[10px]">{realTimeCountdown}</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
   )
-} 
+}, arePropsEqual) 

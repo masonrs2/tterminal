@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", "Consolas", "Courier New", monospace;
 }
 
 @layer utilities {
@@ -90,5 +90,6 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    font-family: "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", "Consolas", "Courier New", monospace;
   }
 }

@@ -32,7 +32,7 @@ const OrderbookRow = React.memo(({
   
   return (
     <div 
-      className="relative flex items-center justify-between px-2 py-0.5 text-xs hover:bg-gray-800/50 transition-colors"
+      className="relative flex items-center justify-between px-2 py-0.5 text-xs font-mono hover:bg-gray-800/50 transition-colors"
       style={{ height: '18px' }} // Fixed height for virtualization
     >
       {/* Background fill */}
@@ -42,15 +42,15 @@ const OrderbookRow = React.memo(({
       />
       
       {/* Content */}
-      <div className="relative z-10 w-12 text-right">0.006</div>
-      <div className={`relative z-10 w-16 text-right ${type === 'bid' ? 'text-green-400' : 'text-red-400'}`}>
+      <div className="relative z-10 w-12 text-right font-mono">0.006</div>
+      <div className={`relative z-10 w-16 text-right font-mono ${type === 'bid' ? 'text-green-400' : 'text-red-400'}`}>
         {entry.price.toFixed(1)}
       </div>
-      <div className="relative z-10 w-12 text-right">{entry.size.toFixed(3)}</div>
-      <div className={`relative z-10 w-16 text-right ${type === 'bid' ? 'text-green-400' : 'text-red-400'}`}>
+      <div className="relative z-10 w-12 text-right font-mono">{entry.size.toFixed(3)}</div>
+      <div className={`relative z-10 w-16 text-right font-mono ${type === 'bid' ? 'text-green-400' : 'text-red-400'}`}>
         0.011
       </div>
-      <div className="relative z-10 w-12 text-right">-0.097</div>
+      <div className="relative z-10 w-12 text-right font-mono">-0.097</div>
     </div>
   )
 })
@@ -123,13 +123,13 @@ export default function HighPerformanceOrderbook({
 
       {/* Header */}
       <div className="h-8 bg-[#181818] flex items-center justify-between px-4 border-b border-gray-700 flex-shrink-0">
-        <div className="flex items-center space-x-4 text-xs">
-          <span>buys</span>
-          <span>bids</span>
-          <span>price</span>
-          <span>asks</span>
-          <span>sells</span>
-          <span>delta</span>
+        <div className="flex items-center space-x-4 text-xs font-mono">
+          <span className="font-mono">buys</span>
+          <span className="font-mono">bids</span>
+          <span className="font-mono">price</span>
+          <span className="font-mono">asks</span>
+          <span className="font-mono">sells</span>
+          <span className="font-mono">delta</span>
         </div>
         <button onClick={onClose}>
           <X className="w-3 h-3 cursor-pointer hover:text-red-400" />
@@ -154,7 +154,7 @@ export default function HighPerformanceOrderbook({
         </div>
 
         {/* Current Price */}
-        <div className="bg-blue-600 px-2 py-1 text-center text-sm font-bold flex-shrink-0 sticky top-0 z-10">
+        <div className="bg-blue-600 px-2 py-1 text-center text-sm font-bold font-mono flex-shrink-0 sticky top-0 z-10">
           {currentPrice.toFixed(1)}
         </div>
 

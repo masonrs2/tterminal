@@ -14,6 +14,7 @@ interface ChartControlsProps {
   showSettings: boolean
   activeIndicators: string[]
   selectedDrawingTool: string | null
+  navigationMode: "auto" | "manual"
   onShowTimeframes: () => void
   onHideTimeframes: () => void
   onShowIndicators: () => void
@@ -26,11 +27,16 @@ interface ChartControlsProps {
   onSelectDrawingTool: (tool: string) => void
   onClearDrawings: () => void
   onResetViewport: () => void
+  onToggleNavigationMode: () => void
   timeframesRef: React.RefObject<HTMLDivElement | null>
   indicatorsRef: React.RefObject<HTMLDivElement | null>
   toolsRef: React.RefObject<HTMLDivElement | null>
   settingsRef: React.RefObject<HTMLButtonElement | null>
   className?: string
+  // Debug functions for cache management
+  onClearCache?: () => void
+  onForceRefresh?: () => void
+  onForceCompleteRefresh?: () => void
 }
 
 const timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"]
@@ -48,6 +54,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   showSettings,
   activeIndicators,
   selectedDrawingTool,
+  navigationMode,
   onShowTimeframes,
   onHideTimeframes,
   onShowIndicators,
@@ -60,11 +67,16 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   onSelectDrawingTool,
   onClearDrawings,
   onResetViewport,
+  onToggleNavigationMode,
   timeframesRef,
   indicatorsRef,
   toolsRef,
   settingsRef,
-  className = ""
+  className = "",
+  // Debug functions for cache management
+  onClearCache,
+  onForceRefresh,
+  onForceCompleteRefresh
 }) => {
   // Timeout refs to manage delayed hiding
   const timeframesTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -94,7 +106,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   }, [])
 
   return (
-    <div className={`h-8 bg-[#181818] flex items-center justify-between px-4 border-b border-gray-700 ${className}`}>
+    <div className={`h-8 bg-[#181818] flex items-center justify-between px-4 border-b border-gray-700 font-mono text-xs ${className}`}>
       <div className="flex items-center space-x-4">
         {/* Timeframe Dropdown */}
         <div 
@@ -104,7 +116,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
           onMouseLeave={() => handleDropdownLeave(onHideTimeframes, timeframesTimeoutRef)}
         >
           <button
-            className={`flex items-center bg-[#0f0f0f] border border-gray-600 rounded px-3 py-1 cursor-pointer transition-colors ${
+            className={`flex items-center bg-[#0f0f0f] border border-gray-600 rounded px-3 py-1 cursor-pointer transition-colors font-mono text-xs ${
               showTimeframes 
                 ? 'text-blue-300 bg-[#1a1a1a] border-blue-500' 
                 : 'text-blue-400 hover:bg-[#1a1a1a] hover:border-blue-400'
@@ -121,7 +133,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
               {timeframes.map((tf) => (
                 <div
                   key={tf}
-                  className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                  className={`px-3 py-2 text-xs font-mono cursor-pointer transition-colors ${
                     tf === selectedTimeframe
                       ? 'bg-blue-600 text-white'
                       : 'hover:bg-[#2a2a2a] hover:text-blue-300'
@@ -135,7 +147,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
           )}
         </div>
 
-        <span className="cursor-pointer hover:text-blue-400 transition-colors">Candlesticks</span>
+        <span className="cursor-pointer hover:text-blue-400 transition-colors font-mono text-xs">Candlesticks</span>
 
         {/* Indicators Dropdown */}
         <div 
@@ -145,7 +157,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
           onMouseLeave={() => handleDropdownLeave(onHideIndicators, indicatorsTimeoutRef)}
         >
           <button
-            className={`flex items-center bg-[#0f0f0f] border border-gray-600 rounded px-3 py-1 cursor-pointer transition-colors ${
+            className={`flex items-center bg-[#0f0f0f] border border-gray-600 rounded px-3 py-1 cursor-pointer transition-colors font-mono text-xs ${
               showIndicators 
                 ? 'text-blue-300 bg-[#1a1a1a] border-blue-500' 
                 : 'hover:bg-[#1a1a1a] hover:border-blue-400'
@@ -162,14 +174,14 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
               {indicators.map((indicator) => (
                 <div
                   key={indicator}
-                  className={`flex items-center justify-between px-3 py-2 text-xs cursor-pointer transition-colors ${
+                  className={`flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer transition-colors ${
                     activeIndicators.includes(indicator)
                       ? 'bg-[#1a2a1a] hover:bg-[#2a3a2a] text-green-300'
                       : 'hover:bg-[#2a2a2a] hover:text-blue-300'
                   }`}
                   onClick={() => onToggleIndicator(indicator)}
                 >
-                  <span>{indicator}</span>
+                  <span className="font-mono text-xs">{indicator}</span>
                   <div
                     className={`w-3 h-3 rounded border transition-colors ${
                       activeIndicators.includes(indicator) 
@@ -197,7 +209,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
           onMouseLeave={() => handleDropdownLeave(onHideTools, toolsTimeoutRef)}
         >
           <button
-            className={`flex items-center bg-[#0f0f0f] border border-gray-600 rounded px-3 py-1 cursor-pointer transition-colors ${
+            className={`flex items-center bg-[#0f0f0f] border border-gray-600 rounded px-3 py-1 cursor-pointer transition-colors font-mono text-xs ${
               showTools 
                 ? 'text-blue-300 bg-[#1a1a1a] border-blue-500' 
                 : 'hover:bg-[#1a1a1a] hover:border-blue-400'
@@ -214,14 +226,14 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
               {drawingToolsList.map((tool) => (
                 <div
                   key={tool}
-                  className={`flex items-center justify-between px-3 py-2 text-xs cursor-pointer transition-colors ${
+                  className={`flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer transition-colors ${
                     selectedDrawingTool === tool
                       ? 'bg-orange-600 text-white'
                       : 'hover:bg-[#2a2a2a] hover:text-blue-300'
                   }`}
                   onClick={() => onSelectDrawingTool(tool)}
                 >
-                  <span>{tool}</span>
+                  <span className="font-mono text-xs">{tool}</span>
                   {tool === "Horizontal Ray" && <Minus className="w-3 h-3" />}
                   {tool === "Rectangle" && <Square className="w-3 h-3" />}
                   {tool === "Measuring Tool" && <Ruler className="w-3 h-3" />}
@@ -229,13 +241,13 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
               ))}
               <div className="border-t border-gray-600 my-1"></div>
               <div
-                className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#2a2a2a] hover:text-red-300 cursor-pointer transition-colors"
+                className="flex items-center justify-between px-3 py-2 text-xs font-mono hover:bg-[#2a2a2a] hover:text-red-300 cursor-pointer transition-colors"
                 onClick={onClearDrawings}
               >
-                <span>Clear All Drawings</span>
+                <span className="font-mono text-xs">Clear All Drawings</span>
                 <X className="w-3 h-3" />
               </div>
-              <div className="px-3 py-1 text-xs text-gray-400 text-center border-t border-gray-600">
+              <div className="px-3 py-1 text-xs font-mono text-gray-400 text-center border-t border-gray-600">
                 Right-click to remove individual drawings
               </div>
             </div>
@@ -244,7 +256,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
 
         <button
           onClick={onToggleSettings}
-          className="cursor-pointer hover:text-blue-400 transition-colors"
+          className="cursor-pointer hover:text-blue-400 transition-colors font-mono text-xs"
           ref={settingsRef}
         >
           Settings
@@ -252,15 +264,64 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
       </div>
 
       <div className="flex items-center space-x-4">
-        <span>0.1</span>
-        <span>Auto</span>
+        <span className="font-mono text-xs">0.1</span>
+        
+        {/* Navigation Mode Toggle Button */}
+        <button
+          onClick={onToggleNavigationMode}
+          className={`px-2 py-0.5 rounded text-xs font-mono transition-all duration-200 border ${
+            navigationMode === 'auto' 
+              ? 'bg-blue-600 border-blue-500 text-white shadow-md' 
+              : 'bg-orange-600 border-orange-500 text-white shadow-md'
+          } hover:scale-105 active:scale-95`}
+          title={navigationMode === 'auto' 
+            ? 'Auto Mode: Horizontal-only chart navigation (click for manual mode)' 
+            : 'Manual Mode: Full directional chart navigation (click for auto mode)'
+          }
+        >
+          {navigationMode === 'auto' ? 'Auto' : 'Manual'}
+        </button>
+        
         <span 
-          className="cursor-pointer hover:text-blue-400 transition-colors"
+          className="cursor-pointer hover:text-blue-400 transition-colors font-mono text-xs"
           onClick={onResetViewport}
           title="Reset chart zoom and position"
         >
           Reset
         </span>
+        
+        {/* Debug cache controls (development only) */}
+        {process.env.NODE_ENV === 'development' && (
+          <>
+            {onClearCache && (
+              <span 
+                className="cursor-pointer hover:text-yellow-400 transition-colors font-mono text-xs"
+                onClick={onClearCache}
+                title="Clear API cache"
+              >
+                Clear Cache
+              </span>
+            )}
+            {onForceRefresh && (
+              <span 
+                className="cursor-pointer hover:text-green-400 transition-colors font-mono text-xs"
+                onClick={onForceRefresh}
+                title="Force refresh current timeframe"
+              >
+                Force Refresh
+              </span>
+            )}
+            {onForceCompleteRefresh && (
+              <span 
+                className="cursor-pointer hover:text-red-400 transition-colors font-mono text-xs"
+                onClick={onForceCompleteRefresh}
+                title="Force complete refresh - clears all caches and fetches fresh data"
+              >
+                Complete Refresh
+              </span>
+            )}
+          </>
+        )}
       </div>
     </div>
   )

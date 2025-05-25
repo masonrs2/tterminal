@@ -155,12 +155,6 @@ export const useChartInteractions = ({
         const isActive = distance > 10
         
         if (distance > 5) { // Only log when there's some movement to reduce spam
-          console.log('Measuring tool move:', { 
-            x, y, endTimeIndex, endPrice, distance, isActive,
-            startX: measuringSelection.startX,
-            startY: measuringSelection.startY,
-            isCreatingMeasurement
-          })
         }
 
         if (isActive) {
@@ -225,8 +219,6 @@ export const useChartInteractions = ({
     const rect = canvas.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
-
-    console.log('Mouse down event:', { drawingMode, isCreatingMeasurement, x, y })
 
     // Check for axis dragging first - this takes priority
     const axisZone = getAxisZone(x, y, canvas)

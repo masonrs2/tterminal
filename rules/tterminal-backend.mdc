@@ -1,0 +1,411 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# ==========================================
+# CURSOR AI RULES FOR TTERMINAL BACKEND (GO)
+# ==========================================
+# Version: 2.0 | Updated: January 2025
+# Mission: FASTEST TRADING TERMINAL BACKEND IN THE INDUSTRY
+
+# 🚀 MISSION CRITICAL: SPEED & PERFORMANCE
+## We are building the FASTEST trading terminal backend in the industry
+- **Sub-100ms WebSocket streaming** with direct Binance integration
+- **Ultra-optimized aggregation endpoints** with 70% smaller payloads
+- **TimescaleDB performance** for massive time-series datasets
+- **Connection pooling & caching** for maximum throughput
+- **Concurrent processing** with goroutines and channels
+- **Memory efficiency** with proper resource management
+- **Zero-downtime operations** with graceful error handling
+
+# 🛠️ CURRENT TECHNOLOGY STACK
+## Our proven, high-performance stack
+- **Framework**: Echo v4 (NOT Gin - we use Echo for performance!)
+- **Database**: TimescaleDB (PostgreSQL + time-series extensions)
+- **Driver**: pgx v5 (NOT GORM - direct driver for speed)
+- **Migrations**: golang-migrate for database versioning
+- **Cache**: Redis for ultra-fast data retrieval
+- **WebSocket**: gorilla/websocket for real-time streaming
+- **API Integration**: Direct Binance Futures API connection
+- **Configuration**: godotenv with validation
+- **UUID**: google/uuid for client identification
+
+# 🏗️ PROVEN ARCHITECTURE PATTERNS
+## Our MVC+ architecture optimized for trading data
+```
+cmd/server/main.go           # Application entry point
+├── controllers/             # HTTP/WebSocket request handlers (Echo)
+├── services/               # Business logic & validation
+├── repositories/           # Database operations (pgx v5)
+├── models/                 # Data structures & DTOs
+├── routes/                 # API endpoint definitions
+└── internal/               # Core infrastructure
+    ├── database/           # TimescaleDB connection & pooling
+    ├── binance/           # Direct Binance API client
+    ├── websocket/         # Real-time streaming system
+    │   ├── hub.go         # Client connection management
+    │   ├── client.go      # Individual client handling
+    │   └── binance_stream.go # Direct Binance WebSocket
+    └── middleware/        # CORS, auth, rate limiting
+```
+
+# ⚡ REAL-TIME STREAMING ARCHITECTURE
+## Our competitive advantage - fastest price updates in the industry
+- **Direct Binance Connection**: Single WebSocket stream for all symbols
+- **Server-side Broadcasting**: Instant distribution to all clients
+- **Intelligent Caching**: Redis + in-memory for sub-100ms responses
+- **Automatic Reconnection**: Robust error handling with exponential backoff
+- **Scalable Design**: 1000+ concurrent WebSocket connections
+- **Hybrid Fallback**: HTTP endpoints when WebSocket unavailable
+
+### WebSocket Service Patterns
+```go
+// Singleton hub pattern for client management
+type Hub struct {
+    clients    map[*Client]bool
+    register   chan *Client
+    unregister chan *Client
+    broadcast  chan []byte
+    mutex      sync.RWMutex
+}
+
+// Thread-safe price updates
+func (h *Hub) BroadcastPrice(symbol string, price float64) {
+    h.mutex.RLock()
+    defer h.mutex.RUnlock()
+    // ... broadcasting logic
+}
+```
+
+# 🔧 DEVELOPMENT WORKFLOW STANDARDS
+## Always test, never assume - critical for trading systems
+- **NEVER assume code works** without testing
+- **Always test endpoints**: `curl http://localhost:8080/api/v1/health`
+- **Verify WebSocket streaming**: `curl http://localhost:8080/api/v1/websocket/stats`
+- **Check containers**: `docker ps` (TimescaleDB + Redis)
+- **Monitor logs**: `make docker-logs` for debugging
+- **Test real-time updates**: `curl http://localhost:8080/api/v1/websocket/price/BTCUSDT`
+
+## Application Startup Sequence
+1. **Primary method**: `make dev` (starts everything including Docker)
+2. **Manual method**: `make docker-up` then `go run cmd/server/main.go`
+3. **Production build**: `make build` then `./bin/server`
+4. **Wait for readiness**: 10+ seconds for TimescaleDB initialization
+5. **Verify health**: All endpoints respond correctly
+
+# 🗄️ TIMESCALEDB PERFORMANCE RULES
+## Optimized for massive trading datasets
+- **Hypertables**: Use for all time-series data (candles, liquidations, etc.)
+- **Time-based indexing**: Automatic partitioning for query performance
+- **pgx v5 syntax**: Direct driver patterns, NOT standard database/sql
+- **Continuous aggregates**: Pre-computed views for common queries
+- **Compression**: Automatic compression for historical data
+- **Connection pooling**: Configured for high concurrent loads
+
+### Query Performance Patterns
+```go
+// Optimized parameterized queries
+row := db.QueryRow(ctx, 
+    "SELECT * FROM candles WHERE symbol = $1 AND timestamp >= $2 ORDER BY timestamp DESC LIMIT $3",
+    symbol, startTime, limit)
+
+// Batch operations for bulk inserts
+batch := &pgx.Batch{}
+for _, candle := range candles {
+    batch.Queue("INSERT INTO candles (...) VALUES ($1, $2, $3)", ...)
+}
+results := db.SendBatch(ctx, batch)
+```
+
+# 🔌 ECHO FRAMEWORK PERFORMANCE PATTERNS
+## High-performance HTTP handling (NOT Gin patterns!)
+- **Context handling**: `echo.Context` for all request processing
+- **JSON responses**: `c.JSON(status, data)` for consistent formatting
+- **Parameter extraction**: `c.Param("name")` and `c.QueryParam("name")`
+- **Request binding**: `c.Bind(&struct)` with validation
+- **Middleware stack**: CORS, rate limiting, logging optimized
+- **Error handling**: Structured error responses with proper HTTP codes
+
+### Router Performance Setup
+```go
+// Optimized Echo configuration
+e := echo.New()
+e.HideBanner = true
+e.Logger.SetLevel(log.INFO)
+
+// Performance middleware
+e.Use(middleware.Gzip())
+e.Use(middleware.CORS())
+e.Use(middleware.RateLimiter())
+
+// Grouped routes for versioning
+v1 := e.Group("/api/v1")
+v1.GET("/websocket/connect", websocketController.HandleConnection)
+```
+
+# 📊 BINANCE API INTEGRATION PERFORMANCE
+## Optimized for real-time trading data
+- **Direct WebSocket connection**: No HTTP polling for real-time data
+- **Rate limit compliance**: Respect 1200 requests/minute limit
+- **Connection pooling**: Reuse HTTP connections for REST endpoints
+- **Error handling**: Graceful degradation with retry logic
+- **Data conversion**: Maintain precision with decimal strings
+- **Caching strategy**: Cache exchange info, stream prices
+
+### Data Processing Patterns
+```go
+// Efficient timestamp conversion
+timestamp := time.Unix(0, binanceTime*int64(time.Millisecond))
+
+// Precision-preserving price handling
+type PriceData struct {
+    Price  string  `json:"price"`   // Keep as string
+    Volume string  `json:"volume"`  // Maintain precision
+}
+```
+
+# 🚀 ULTRA-FAST API ENDPOINTS
+## Our competitive performance advantages
+- **Aggregation endpoints**: 70% smaller payloads than standard REST
+- **Multi-endpoint requests**: Batch multiple data types in single call
+- **Intelligent caching**: Redis + memory layers for sub-50ms responses
+- **Concurrent processing**: Goroutines for parallel data fetching
+- **Optimized serialization**: Custom JSON marshaling for speed
+- **Connection reuse**: HTTP keep-alive and connection pooling
+
+### Performance-Critical Endpoints
+```go
+// Ultra-fast aggregation with caching
+func (s *AggregationService) GetCandles(ctx context.Context, symbol, interval string, limit int) (*CandleResponse, error) {
+    // Check cache first
+    if cached := s.cache.Get(cacheKey); cached != nil {
+        return cached, nil
+    }
+    
+    // Fetch with timeout
+    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+    defer cancel()
+    
+    // Parallel processing if needed
+    // ... optimized logic
+}
+```
+
+# 🧪 TESTING & VERIFICATION PROTOCOLS
+## Comprehensive testing for trading-critical systems
+### Before Any Code Changes
+1. **Health check**: `curl http://localhost:8080/api/v1/health`
+2. **WebSocket status**: `curl http://localhost:8080/api/v1/websocket/stats`
+3. **Real-time prices**: `curl http://localhost:8080/api/v1/websocket/price/BTCUSDT`
+4. **Database connectivity**: `make db-shell`
+5. **Container status**: `docker ps`
+6. **Log analysis**: `make docker-logs`
+
+### After Code Changes
+1. **Compilation**: `go build ./...`
+2. **Application startup**: `make dev`
+3. **Endpoint testing**: Test all modified endpoints with curl
+4. **WebSocket verification**: Connect and verify streaming
+5. **Performance testing**: Check response times
+6. **Error scenarios**: Test with invalid inputs
+
+### Performance Benchmarking
+```bash
+# Endpoint response time testing
+time curl -s "http://localhost:8080/api/v1/aggregation/candles/BTCUSDT/1m?limit=100"
+
+# WebSocket connection testing
+wscat -c ws://localhost:8080/api/v1/websocket/connect
+
+# Database query performance
+\timing on
+SELECT count(*) FROM candles WHERE symbol = 'BTCUSDT';
+```
+
+# 🚨 CRITICAL: FRAMEWORK PATTERNS
+## What we use vs what to avoid
+### ✅ CORRECT Echo Patterns
+```go
+// Echo context handling
+func GetCandles(c echo.Context) error {
+    symbol := c.Param("symbol")
+    limit := c.QueryParam("limit")
+    return c.JSON(200, response)
+}
+
+// Echo route registration
+e.GET("/candles/:symbol", controller.GetCandles)
+```
+
+### ❌ WRONG Gin Patterns (Never Use)
+```go
+// DON'T use gin.Context, gin.H{}, etc.
+func BadHandler(c *gin.Context) {
+    c.JSON(200, gin.H{"error": "wrong framework"})
+}
+```
+
+### ✅ CORRECT pgx v5 Patterns
+```go
+// Direct pgx driver usage
+conn, err := pgx.Connect(ctx, databaseURL)
+row := conn.QueryRow(ctx, "SELECT * FROM table WHERE id = $1", id)
+```
+
+### ❌ WRONG GORM Patterns (Never Use)
+```go
+// DON'T use GORM ORM patterns
+db.Where("symbol = ?", symbol).Find(&candles)
+```
+
+# 🔄 CODE REVIEW CHECKLIST
+## Quality gates for trading-critical code
+### Before Implementation
+- [ ] Understand existing patterns in similar controllers/services
+- [ ] Check MVC layer separation (controllers → services → repositories)
+- [ ] Verify Echo/pgx imports (not Gin/GORM)
+- [ ] Review performance implications
+- [ ] Check WebSocket impact if applicable
+
+### After Implementation
+- [ ] Code compiles without warnings: `go build ./...`
+- [ ] Application starts successfully: `make dev`
+- [ ] Health endpoint responds: `curl http://localhost:8080/api/v1/health`
+- [ ] New endpoints tested with curl and proper responses
+- [ ] WebSocket service unaffected: `curl http://localhost:8080/api/v1/websocket/stats`
+- [ ] No errors in application logs: `make docker-logs`
+- [ ] Performance meets sub-100ms targets
+
+# 📝 API DOCUMENTATION STANDARDS
+## Always reference and update API_DOCUMENTATION.md
+- **Read first**: Always check `@API_DOCUMENTATION.md` for endpoint patterns
+- **Request/Response examples**: Include curl examples and JSON responses
+- **WebSocket protocols**: Document message formats and connection flows
+- **Error responses**: Include all possible error states with HTTP codes
+- **Performance metrics**: Document expected response times
+- **Rate limiting**: Document any rate limits or quotas
+
+### Documentation Update Checklist
+- [ ] New endpoints added to API_DOCUMENTATION.md
+- [ ] Request/response examples included
+- [ ] WebSocket message formats documented
+- [ ] Error responses with HTTP codes
+- [ ] curl command examples provided
+
+# 🎯 PERFORMANCE MONITORING & OPTIMIZATION
+## Maintaining our speed advantage
+### Database Performance
+- **Query optimization**: Use EXPLAIN ANALYZE for slow queries
+- **Index usage**: Monitor index effectiveness with TimescaleDB
+- **Connection pooling**: Monitor active/idle connections
+- **Batch operations**: Prefer batch inserts over individual operations
+- **Time-series optimization**: Use TimescaleDB continuous aggregates
+
+### API Performance
+- **Response times**: Target <50ms for cached endpoints, <100ms for database queries
+- **Memory usage**: Monitor goroutine and memory growth
+- **Connection limits**: WebSocket connection scaling
+- **Rate limiting**: Implement intelligent rate limiting
+- **Caching effectiveness**: Monitor Redis hit rates
+
+### Real-time Performance
+- **WebSocket latency**: Sub-100ms Binance to client
+- **Broadcasting efficiency**: Minimize CPU usage for client updates
+- **Memory management**: Proper cleanup of disconnected clients
+- **Error recovery**: Fast reconnection without data loss
+
+# 🔍 DEBUGGING & TROUBLESHOOTING
+## Quick diagnostic commands
+```bash
+# Application health
+curl http://localhost:8080/api/v1/health | jq '.'
+
+# WebSocket service status
+curl http://localhost:8080/api/v1/websocket/stats | jq '.'
+
+# Real-time price verification
+curl http://localhost:8080/api/v1/websocket/price/BTCUSDT | jq '.price'
+
+# Database connectivity
+make db-shell
+\dt
+
+# Container health
+docker ps
+docker logs tterminal-timescaledb
+docker logs tterminal-redis
+
+# Application logs
+make docker-logs
+tail -f logs/application.log
+```
+
+# 📊 ISSUES TRACKING INTEGRATION
+## Always update ISSUES_TRACKING.md for significant problems
+- **Document difficult bugs**: Add to the "DIFFICULT BUGS" section
+- **Include root cause analysis**: What caused the issue
+- **Document solution approach**: How we solved it
+- **Add prevention measures**: How to avoid in future
+- **Include debugging commands**: What helped identify the issue
+- **Update after resolution**: Mark as solved with implementation details
+
+### Example Entry Template
+```markdown
+### X. **Issue Name** ⭐ SOLVED/OPEN
+**Issue**: Brief description of the problem
+**Root Cause**: Technical explanation of what went wrong
+**Solution Applied**: Code changes and approach taken
+**Files Modified**: List of changed files
+**Prevention**: How to avoid this issue in future
+```
+
+# 🚀 DEPLOYMENT & PRODUCTION READINESS
+## Production checklist for trading systems
+### Environment Configuration
+- [ ] All environment variables configured (`DATABASE_URL`, `REDIS_URL`, etc.)
+- [ ] Binance API credentials secured
+- [ ] CORS origins configured for production domains
+- [ ] Rate limiting configured appropriately
+- [ ] Health check endpoints responding
+
+### Performance Validation
+- [ ] WebSocket connection limits tested (target: 1000+ concurrent)
+- [ ] Database query performance verified (<100ms for complex queries)
+- [ ] Memory usage stable under load
+- [ ] Real-time latency meets <100ms target
+- [ ] Error recovery mechanisms tested
+
+### Monitoring Setup
+- [ ] Application logs properly configured
+- [ ] Database performance monitoring
+- [ ] WebSocket connection tracking
+- [ ] Error rate monitoring
+- [ ] Response time alerting
+
+# 🏆 SUCCESS METRICS
+## How we measure our performance leadership
+- **Real-time latency**: <100ms Binance to client delivery
+- **API response times**: <50ms cached, <100ms database queries
+- **WebSocket scalability**: 1000+ concurrent connections
+- **Database efficiency**: Optimized TimescaleDB queries
+- **Memory efficiency**: Stable memory usage under load
+- **Uptime**: 99.9% availability with graceful error handling
+- **Data accuracy**: Zero data loss with proper error recovery
+
+# ⚠️ NEVER COMPROMISE ON
+## Non-negotiable performance requirements
+- **Real-time streaming performance** - Sub-100ms latency
+- **Database query optimization** - Proper indexing and query patterns
+- **Memory management** - No leaks, efficient resource usage
+- **Error handling** - Graceful degradation without data loss
+- **WebSocket reliability** - Automatic reconnection and client management
+- **Data precision** - Maintain decimal precision for financial data
+
+---
+
+**Remember**: Every change should make us faster, not slower. We are building the fastest trading terminal backend in the industry. Performance is not optional - it's our competitive advantage. Always test, always verify, always optimize.
+
+**Reference Files**:
+- `@API_DOCUMENTATION.md` - For endpoint patterns and expected responses
+- `@ISSUES_TRACKING.md` - For documenting significant bugs and solutions 

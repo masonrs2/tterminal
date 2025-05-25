@@ -30,6 +30,7 @@ const defaultUIState = {
   activeIndicators: ["CVD", "Liquidations", "VPVR", "Heatmap"],
   hoveredIndicator: null,
   openSettingsPanel: null,
+  navigationMode: "auto", // "auto" = horizontal only, "manual" = full directional
 }
 
 const defaultThemeState = {
@@ -111,6 +112,9 @@ export const useTradingState = () => {
   const [showOrderbook, setShowOrderbook] = useState(persistedUIState.showOrderbook)
   const [selectedTimeframe, setSelectedTimeframe] = useState(persistedUIState.selectedTimeframe)
 
+  // Navigation mode (persisted)
+  const [navigationMode, setNavigationMode] = useState<"auto" | "manual">((persistedUIState.navigationMode as "auto" | "manual") || "auto")
+
   // Indicators (persisted)
   const [activeIndicators, setActiveIndicators] = useState<string[]>(persistedUIState.activeIndicators)
   const [hoveredIndicator, setHoveredIndicator] = useState<string | null>(persistedUIState.hoveredIndicator)
@@ -174,6 +178,7 @@ export const useTradingState = () => {
       activeIndicators,
       hoveredIndicator,
       openSettingsPanel,
+      navigationMode,
     }
     setStoredData(STORAGE_KEYS.UI_STATE, uiState)
   }, 300)
@@ -230,6 +235,7 @@ export const useTradingState = () => {
     setActiveIndicators(storedUIState.activeIndicators)
     setHoveredIndicator(storedUIState.hoveredIndicator)
     setOpenSettingsPanel(storedUIState.openSettingsPanel)
+    setNavigationMode((storedUIState.navigationMode as "auto" | "manual") || "auto")
 
     // Apply persisted theme state
     setBackgroundColor(storedThemeState.backgroundColor)
@@ -269,6 +275,7 @@ export const useTradingState = () => {
     activeIndicators,
     hoveredIndicator,
     openSettingsPanel,
+    navigationMode,
     saveUIState,
   ])
 
@@ -360,6 +367,10 @@ export const useTradingState = () => {
     setShowChartSettings,
     showOrderbook,
     setShowOrderbook,
+
+    // Navigation mode
+    navigationMode,
+    setNavigationMode,
 
     // Indicators
     activeIndicators,

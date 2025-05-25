@@ -53,10 +53,16 @@ func (r *CandleRepository) GetBySymbolAndInterval(ctx context.Context, symbol, i
 		SELECT id, symbol, open_time, open, high, low, close, volume, close_time,
 		       quote_asset_volume, trade_count, taker_buy_base_asset_volume,
 		       taker_buy_quote_asset_volume, interval, created_at, updated_at
-		FROM candles
-		WHERE symbol = $1 AND interval = $2
-		ORDER BY open_time DESC
-		LIMIT $3
+		FROM (
+			SELECT id, symbol, open_time, open, high, low, close, volume, close_time,
+			       quote_asset_volume, trade_count, taker_buy_base_asset_volume,
+			       taker_buy_quote_asset_volume, interval, created_at, updated_at
+			FROM candles
+			WHERE symbol = $1 AND interval = $2
+			ORDER BY open_time DESC
+			LIMIT $3
+		) AS recent_candles
+		ORDER BY open_time ASC
 	`
 
 	rows, err := r.db.Pool.Query(ctx, query, symbol, interval, limit)
@@ -203,10 +209,14 @@ func (r *CandleRepository) BulkCreate(ctx context.Context, candles []models.Cand
 func (r *CandleRepository) GetOptimizedCandleData(ctx context.Context, symbol, interval string, limit int) ([]models.OptimizedCandle, error) {
 	query := `
 		SELECT open_time, open, high, low, close, volume
-		FROM candles
-		WHERE symbol = $1 AND interval = $2
-		ORDER BY open_time DESC
-		LIMIT $3
+		FROM (
+			SELECT open_time, open, high, low, close, volume
+			FROM candles
+			WHERE symbol = $1 AND interval = $2
+			ORDER BY open_time DESC
+			LIMIT $3
+		) AS recent_candles
+		ORDER BY open_time ASC
 	`
 
 	rows, err := r.db.Pool.Query(ctx, query, symbol, interval, limit)

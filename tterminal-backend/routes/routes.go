@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"tterminal-backend/config"
 	"tterminal-backend/controllers"
 	"tterminal-backend/internal/binance"
@@ -33,11 +34,23 @@ func SetupRoutes(e *echo.Echo, db *database.DB, cfg *config.Config) {
 	// Initialize ultra-fast aggregation service
 	aggregationService := services.NewAggregationService(candleService, redisCache)
 
+	// Initialize DATA COLLECTION SERVICE for continuous fresh data
+	dataCollectionService := services.NewDataCollectionService(candleRepo, binanceClient)
+
+	// Start the data collection service to ensure fresh data
+	if err := dataCollectionService.Start(); err != nil {
+		panic(fmt.Sprintf("Failed to start data collection service: %v", err))
+	}
+
 	// Initialize controllers
 	candleController := controllers.NewCandleController(candleService, binanceService)
 	symbolController := controllers.NewSymbolController(symbolService)
 	healthController := controllers.NewHealthController(db)
 	aggregationController := controllers.NewAggregationController(aggregationService)
+	dataCollectionController := controllers.NewDataCollectionController(dataCollectionService)
+
+	// Initialize ULTRA-FAST WebSocket controller for real-time streaming
+	websocketController := controllers.NewWebSocketController()
 
 	// Setup middleware
 	e.Use(middleware.CORS(cfg))
@@ -84,7 +97,31 @@ func SetupRoutes(e *echo.Echo, db *database.DB, cfg *config.Config) {
 	// Multi-data endpoint for frontend efficiency (get everything in one call)
 	agg.POST("/multi", aggregationController.GetAggregatedMultiData)
 
-	// WebSocket routes for real-time data
-	ws := v1.Group("/ws")
-	ws.GET("/candles/:symbol", candleController.StreamCandles)
+	// DATA COLLECTION SERVICE ROUTES - For monitoring and controlling continuous data collection
+	collection := v1.Group("/data-collection")
+	collection.GET("/stats", dataCollectionController.GetStats)                  // Service statistics
+	collection.POST("/collect", dataCollectionController.TriggerCollection)      // Manual trigger
+	collection.POST("/start", dataCollectionController.StartService)             // Start service
+	collection.POST("/stop", dataCollectionController.StopService)               // Stop service
+	collection.POST("/symbols", dataCollectionController.AddSymbol)              // Add symbol to collection
+	collection.DELETE("/symbols/:symbol", dataCollectionController.RemoveSymbol) // Remove symbol
+
+	// ULTRA-FAST WEBSOCKET ROUTES - SUB-100MS REAL-TIME UPDATES
+	ws := v1.Group("/websocket")
+
+	// WebSocket connection endpoint - upgrade HTTP to WebSocket
+	ws.GET("/connect", websocketController.HandleWebSocket)
+
+	// WebSocket service statistics and monitoring
+	ws.GET("/stats", websocketController.GetWebSocketStats)
+
+	// Real-time price endpoints (fallback for when WebSocket isn't available)
+	ws.GET("/price/:symbol", websocketController.GetLastPrice)
+
+	// Dynamic symbol management
+	ws.POST("/symbols/:symbol", websocketController.AddSymbolToStream)
+
+	// Legacy WebSocket routes for backward compatibility
+	legacyWs := v1.Group("/ws")
+	legacyWs.GET("/candles/:symbol", candleController.StreamCandles)
 }

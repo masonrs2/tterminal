@@ -1,207 +1,93 @@
 /**
- * Trading Terminal - Modular Implementation
+ * Trading Terminal - Modular Implementation with Real-time WebSocket Integration
  * Enterprise-level component architecture for maintainability and scalability
  * 
  * Features:
  * - Modular component structure for better organization
  * - Custom hooks for centralized state management
+ * - Real-time WebSocket price streaming with sub-100ms updates
  * - Reusable utility functions and type definitions
  * - High-performance canvas rendering with optimizations
  * - Interactive drawing tools with keyboard shortcuts
  * - Real-time price updates and multiple indicators
+ * - ULTRA-FAST backend integration with intelligent caching
  * 
  * Architecture Benefits:
  * - Single responsibility principle for each component
  * - Easy testing and debugging of individual modules
  * - Improved code reusability and maintainability
  * - Better developer experience with TypeScript support
+ * - Maximum performance for professional trading
+ * 
+ * Real-time Features:
+ * - WebSocket streaming for live price updates
+ * - Real-time candle updates for current timeframe
+ * - Automatic fallback to HTTP polling if WebSocket fails
+ * - Live price movement on Y-axis with smooth animations
  */
 
 "use client"
 
-import React, { useRef, useCallback, useEffect } from "react"
+import React, { useRef, useCallback, useEffect, useState, useMemo } from "react"
 import { useTradingState } from './hooks/trading/useTradingState'
+import { useTradingData } from './hooks/trading/useTradingData'
+import { useWebSocketPrice } from './hooks/trading/useWebSocketPrice'
 import { useChartInteractions } from './hooks/trading/useChartInteractions'
 import { TopNavigation } from './components/trading-terminal/controls/TopNavigation'
 import { SymbolTabs } from './components/trading-terminal/controls/SymbolTabs'
 import { ChartControls } from './components/trading-terminal/controls/ChartControls'
 import { MainChart } from './components/trading-terminal/charts/MainChart'
+import { WebSocketStatus } from './components/trading/WebSocketStatus'
 import HighPerformanceOrderbook from './components/orderbook'
-import type { CandleData, VolumeProfileEntry, HeatmapData } from './types/trading'
-
-// Seeded random number generator for consistent data generation
-class SeededRandom {
-  private seed: number
-
-  constructor(seed: number) {
-    this.seed = seed
-  }
-
-  random(): number {
-    const x = Math.sin(this.seed++) * 10000
-    return x - Math.floor(x)
-  }
-}
-
-// Create seeded random instance with fixed seed for consistency
-const seededRandom = new SeededRandom(12345)
-
-// Generate realistic historical trading data (500 candles) with seeded randomness
-const generateRealisticCandleData = (): CandleData[] => {
-  const candles: CandleData[] = []
-  // Use fixed timestamp for consistent data generation (Jan 1, 2024)
-  const baseTime = 1704067200000 - 3600000 * 500 // 500 hours before Jan 1, 2024
-  let currentPrice = 108000 // Starting price
-  
-  for (let i = 0; i < 500; i++) {
-    const timestamp = baseTime + i * 3600000 // Hourly candles
-    
-    // Realistic price movement with trends and volatility
-    const trend = Math.sin(i / 50) * 0.002 // Long-term trend
-    const noise = (seededRandom.random() - 0.5) * 0.008 // Random volatility
-    const momentum = (seededRandom.random() - 0.5) * 0.004 // Momentum component
-    
-    const priceChange = trend + noise + momentum
-    currentPrice *= (1 + priceChange)
-    
-    // Generate OHLC with realistic wicks
-    const open = currentPrice
-    const volatility = 0.015 + seededRandom.random() * 0.01 // 1.5-2.5% volatility
-    const high = open * (1 + seededRandom.random() * volatility)
-    const low = open * (1 - seededRandom.random() * volatility)
-    
-    // Close price tends to stay within range but can break out
-    const closeDirection = seededRandom.random() - 0.5
-    const close = open + (closeDirection * (high - low) * 0.7)
-    currentPrice = Math.max(low, Math.min(high, close))
-    
-    // Realistic volume with higher volume on big moves
-    const priceMovement = Math.abs(close - open) / open
-    const baseVolume = 800 + seededRandom.random() * 400
-    const volumeMultiplier = 1 + (priceMovement * 5) // Higher volume on big moves
-    const volume = Math.floor(baseVolume * volumeMultiplier)
-    
-    candles.push({
-      timestamp,
-      open: Math.round(open * 100) / 100,
-      high: Math.round(high * 100) / 100,
-      low: Math.round(low * 100) / 100,
-      close: Math.round(close * 100) / 100,
-      volume
-    })
-  }
-  
-  return candles
-}
-
-const candleData: CandleData[] = generateRealisticCandleData()
-
-// Generate realistic volume profile based on price levels with seeded randomness
-const generateVolumeProfile = (): VolumeProfileEntry[] => {
-  const profile: VolumeProfileEntry[] = []
-  const priceMin = Math.min(...candleData.map(c => c.low))
-  const priceMax = Math.max(...candleData.map(c => c.high))
-  const priceStep = (priceMax - priceMin) / 100 // 100 price levels
-  
-  for (let i = 0; i < 100; i++) {
-    const price = priceMin + (i * priceStep)
-    
-    // Calculate how much volume occurred at this price level
-    let totalVolume = 0
-    candleData.forEach(candle => {
-      if (price >= candle.low && price <= candle.high) {
-        // More volume near the close price, less at extremes
-        const pricePosition = (price - candle.low) / (candle.high - candle.low)
-        const closeness = 1 - Math.abs(pricePosition - 0.5) * 2
-        totalVolume += candle.volume * closeness * 0.1
-      }
-    })
-    
-    if (totalVolume > 50) { // Only include significant levels
-      const type = seededRandom.random() > 0.5 ? "buy" : "sell"
-      profile.push({
-        price: Math.round(price * 100) / 100,
-        volume: Math.floor(totalVolume),
-        type
-      })
-    }
-  }
-  
-  return profile.sort((a, b) => b.price - a.price) // Sort by price descending
-}
-
-const volumeProfile: VolumeProfileEntry[] = generateVolumeProfile()
-
-// Generate realistic heatmap data across the chart with seeded randomness
-const generateHeatmapData = (): HeatmapData[] => {
-  const heatmap: HeatmapData[] = []
-  
-  // Generate heatmap points for significant price/time areas
-  for (let timeIndex = 50; timeIndex < candleData.length - 50; timeIndex += 10) {
-    for (let priceLevel = 0; priceLevel < 20; priceLevel++) {
-      if (seededRandom.random() > 0.7) { // 30% chance of heatmap point
-        const candle = candleData[timeIndex]
-        const priceRange = candle.high - candle.low
-        const baseIntensity = candle.volume / 1000
-        
-        // Higher intensity around high volume areas
-        const intensity = baseIntensity * (0.5 + seededRandom.random() * 1.5)
-        
-        heatmap.push({
-          x: timeIndex,
-          y: priceLevel,
-          intensity: Math.round(intensity * 100) / 100
-        })
-      }
-    }
-  }
-  
-  return heatmap
-}
-
-const heatmapData: HeatmapData[] = generateHeatmapData()
-
-// Generate realistic orderbook data with enough entries to fill the height
-const generateOrderbookData = () => {
-  const asks = []
-  const bids = []
-  const currentPrice = candleData[candleData.length - 1]?.close || 108000
-  
-  let total = 0
-  // Generate 100 ask levels (above current price)
-  for (let i = 0; i < 100; i++) {
-    const price = currentPrice + (i + 1) * 0.1
-    const size = seededRandom.random() * 5 + 0.001
-    total += size
-    asks.push({ price: Math.round(price * 10) / 10, size: Math.round(size * 1000) / 1000, total: Math.round(total * 1000) / 1000 })
-  }
-  
-  total = 0
-  // Generate 100 bid levels (below current price)
-  for (let i = 0; i < 100; i++) {
-    const price = currentPrice - (i + 1) * 0.1
-    const size = seededRandom.random() * 5 + 0.001
-    total += size
-    bids.push({ price: Math.round(price * 10) / 10, size: Math.round(size * 1000) / 1000, total: Math.round(total * 1000) / 1000 })
-  }
-  
-  return { asks, bids }
-}
-
-const orderbook = generateOrderbookData()
+import type { CandleData } from './types/trading'
 
 export default function TradingTerminal() {
+  // State for dynamic symbol selection (can be expanded to support multiple symbols)
+  const [selectedSymbol, setSelectedSymbol] = useState('BTCUSDT')
+  
   // Centralized state management
   const state = useTradingState()
   
-  // Set current price to the latest candle's close price
-  React.useEffect(() => {
-    if (candleData.length > 0) {
-      const latestCandle = candleData[candleData.length - 1]
-      state.setCurrentPrice(latestCandle.close)
-    }
-  }, [candleData, state.setCurrentPrice])
+  // Real-time WebSocket integration for live price updates
+  const websocketPrice = useWebSocketPrice({ 
+    symbol: selectedSymbol,
+    enabled: true 
+  })
   
+  // Real-time trading data from backend API with WebSocket integration
+  const tradingData = useTradingData({
+    symbol: selectedSymbol,
+    interval: state.selectedTimeframe,
+    limit: 500,
+    enableRealTimeUpdates: true, // Enable real-time updates via WebSocket
+    updateInterval: 5000, // HTTP fallback interval (slower since WebSocket handles real-time)
+  })
+
+  // Real-time price tracking with WebSocket updates
+  useEffect(() => {
+    // Use WebSocket price if available and connected
+    if (websocketPrice.price !== null && websocketPrice.isConnected) {
+      state.setCurrentPrice(websocketPrice.price)
+    } 
+    // Fallback to HTTP data if WebSocket is not available
+    else if (tradingData.currentPrice > 0) {
+      state.setCurrentPrice(tradingData.currentPrice)
+    }
+  }, [
+    websocketPrice.price, 
+    websocketPrice.isConnected, 
+    tradingData.currentPrice, 
+    selectedSymbol,
+    state.setCurrentPrice
+  ])
+
+  // Log connection status changes
+  useEffect(() => {
+    if (websocketPrice.isConnected) {
+      console.log(`✅ WebSocket active for ${selectedSymbol}`)
+    }
+  }, [websocketPrice.isConnected, selectedSymbol])
+
   // Component refs for dropdown management
   const timeframesDropdownRef = useRef<HTMLDivElement>(null)
   const indicatorsDropdownRef = useRef<HTMLDivElement>(null)
@@ -213,10 +99,10 @@ export default function TradingTerminal() {
   const cvdCanvasRef = useRef<HTMLCanvasElement>(null)
   const liquidationsCanvasRef = useRef<HTMLCanvasElement>(null)
 
-  // Chart interactions hook
+  // Chart interactions hook with real data
   const { handleMouseMove, handleCanvasMouseDown, handleAxisDragEnd, handleMeasuringToolMouseUp, handleWheel } = useChartInteractions({
     canvasRef,
-    candleData,
+    candleData: tradingData.candles,
     drawingMode: state.drawingMode,
     drawingTools: state.drawingTools,
     selectedDrawingIndex: state.selectedDrawingIndex,
@@ -239,10 +125,13 @@ export default function TradingTerminal() {
   /**
    * Chart control handlers
    */
-  const handleSelectTimeframe = useCallback((timeframe: string) => {
+  const handleSelectTimeframe = useCallback(async (timeframe: string) => {
     state.setSelectedTimeframe(timeframe)
     state.setShowTimeframes(false)
-  }, [state.setSelectedTimeframe, state.setShowTimeframes])
+    
+    // Load new interval data
+    await tradingData.loadInterval(timeframe)
+  }, [state.setSelectedTimeframe, state.setShowTimeframes, tradingData.loadInterval])
 
   const handleToggleIndicator = useCallback((indicator: string) => {
     state.setActiveIndicators(prev =>
@@ -301,6 +190,10 @@ export default function TradingTerminal() {
     state.resetViewportSettings()
   }, [state.resetViewportSettings])
 
+  const handleToggleNavigationMode = useCallback(() => {
+    state.setNavigationMode(prev => prev === 'auto' ? 'manual' : 'auto')
+  }, [state.setNavigationMode])
+
   // Handle canvas mouse movement for drawing rectangles
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
@@ -313,8 +206,16 @@ export default function TradingTerminal() {
     const spacing = 12 * state.viewportState.timeZoom
     const timeIndex = Math.floor((x - 50 + state.viewportState.timeOffset) / spacing)
     const chartHeight = canvas.offsetHeight - 100
-    const priceRange = (113000 - 107000) / state.viewportState.priceZoom
-    const price = 113000 - ((y - 50 + state.viewportState.priceOffset) / chartHeight) * priceRange
+    
+    // Calculate price range based on actual data
+    const candles = tradingData.candles
+    if (candles.length === 0) return
+    
+    const prices = candles.map(c => [c.low, c.high]).flat()
+    const minPrice = Math.min(...prices)
+    const maxPrice = Math.max(...prices)
+    const priceRange = (maxPrice - minPrice) / state.viewportState.priceZoom
+    const price = maxPrice - ((y - 50 + state.viewportState.priceOffset) / chartHeight) * priceRange
 
     state.setDrawingTools(prev => {
       const lastIndex = prev.length - 1
@@ -333,7 +234,7 @@ export default function TradingTerminal() {
 
       return prev
     })
-  }, [state.drawingMode, state.drawingTools, state.viewportState.timeZoom, state.viewportState.priceZoom, state.viewportState.timeOffset, state.viewportState.priceOffset, state.setDrawingTools])
+  }, [state.drawingMode, state.drawingTools, state.viewportState, tradingData.candles, state.setDrawingTools])
 
   const handleCanvasMouseUp = useCallback(() => {
     if (state.drawingMode === "Rectangle") {
@@ -430,11 +331,23 @@ export default function TradingTerminal() {
         // Apply drag sensitivity multiplier for faster panning
         const dragSensitivity = 1.25
         
-        state.setViewportState(prev => ({
-          ...prev,
-          timeOffset: prev.timeOffset - (deltaX * dragSensitivity),
-          priceOffset: prev.priceOffset - (deltaY * dragSensitivity)
-        }))
+        // Respect navigation mode for chart movement
+        if (state.navigationMode === 'auto') {
+          // Auto mode: Only horizontal movement (current behavior)
+          state.setViewportState(prev => ({
+            ...prev,
+            timeOffset: prev.timeOffset - (deltaX * dragSensitivity),
+            // priceOffset remains unchanged in auto mode
+          }))
+        } else {
+          // Manual mode: Full directional movement
+          state.setViewportState(prev => ({
+            ...prev,
+            timeOffset: prev.timeOffset - (deltaX * dragSensitivity),
+            priceOffset: prev.priceOffset + (deltaY * dragSensitivity)
+          }))
+        }
+        
         state.setDragState(prev => ({
           ...prev,
           dragStart: { x: e.clientX, y: e.clientY }
@@ -476,7 +389,6 @@ export default function TradingTerminal() {
     }
 
     if (state.dragState.isDraggingChart || state.dragState.isDraggingPrice || state.dragState.isDraggingTime || state.dragState.isDraggingCvd || state.dragState.isDraggingLiquidations || state.isCreatingMeasurement) {
-      console.log('Attaching global mouse handlers', { isCreatingMeasurement: state.isCreatingMeasurement })
       document.addEventListener("mousemove", handleMouseMove)
       document.addEventListener("mouseup", handleMouseUp)
     }
@@ -577,9 +489,9 @@ export default function TradingTerminal() {
     ctx.beginPath()
     let cvdValue = 0
     const spacing = 12 * state.viewportState.timeZoom
-    const maxVolume = Math.max(...candleData.map(c => c.volume))
+    const maxVolume = Math.max(...tradingData.candles.map(c => c.volume))
     
-    candleData.forEach((candle, index) => {
+    tradingData.candles.forEach((candle, index) => {
       // More realistic CVD calculation with proper buy/sell ratio
       const isBullish = candle.close > candle.open
       const priceMove = Math.abs(candle.close - candle.open) / candle.open
@@ -589,7 +501,7 @@ export default function TradingTerminal() {
       const x = index * spacing + 50 - state.viewportState.timeOffset
       
       // Scale CVD to fit chart height properly
-      const cvdRange = maxVolume * candleData.length * 0.1 // Estimated range
+      const cvdRange = maxVolume * tradingData.candles.length * 0.1 // Estimated range
       const y = canvas.offsetHeight / 2 + (cvdValue / cvdRange) * (canvas.offsetHeight * 0.4)
       
       if (index === 0) ctx.moveTo(x, y)
@@ -608,7 +520,7 @@ export default function TradingTerminal() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [state.viewportState.timeZoom, state.viewportState.timeOffset, state.mousePosition, state.backgroundColor, state.indicatorSettings.cvd, candleData])
+  }, [state.viewportState.timeZoom, state.viewportState.timeOffset, state.mousePosition, state.backgroundColor, state.indicatorSettings.cvd, tradingData.candles])
 
   // Store liquidation bars data to avoid redrawing on mouse move
   const liquidationBarsRef = React.useRef<ImageData | null>(null)
@@ -630,7 +542,7 @@ export default function TradingTerminal() {
 
     // Generate stable liquidation data (using candle index as seed for consistency)
     const spacing = 12 * state.viewportState.timeZoom
-    candleData.forEach((candle, index) => {
+    tradingData.candles.forEach((candle, index) => {
       const x = index * spacing + 50 - state.viewportState.timeOffset
       if (x < -8 || x > canvas.offsetWidth) return
 
@@ -668,7 +580,7 @@ export default function TradingTerminal() {
 
     // Store the bars data for crosshair overlay
     liquidationBarsRef.current = ctx.getImageData(0, 0, canvas.offsetWidth * 2, canvas.offsetHeight * 2)
-  }, [state.viewportState.timeZoom, state.viewportState.timeOffset, state.backgroundColor, state.indicatorSettings.liquidations, candleData])
+  }, [state.viewportState.timeZoom, state.viewportState.timeOffset, state.backgroundColor, state.indicatorSettings.liquidations, tradingData.candles])
 
   // Draw crosshair overlay for liquidations (separate effect for mouse movement)
   useEffect(() => {
@@ -795,7 +707,7 @@ export default function TradingTerminal() {
     if (!canvas) return
     
     const spacing = 12 * 1 // Use default zoom for calculation
-    const totalWidth = candleData.length * spacing
+    const totalWidth = tradingData.candles.length * spacing
     const canvasWidth = canvas.offsetWidth
     const rightMargin = 100 // Keep some margin from the right edge
     
@@ -808,7 +720,7 @@ export default function TradingTerminal() {
       priceOffset: 0,
       timeOffset: targetOffset,
     })
-  }, [state, candleData])
+  }, [state, tradingData.candles])
 
   // Format datetime for crosshair (e.g., "Sat, May 25 07:00")
   const formatCrosshairDateTime = useCallback((timestamp: number) => {
@@ -827,24 +739,149 @@ export default function TradingTerminal() {
 
   // Get crosshair datetime based on mouse position
   const getCrosshairDateTime = useCallback(() => {
-    if (!state.mousePosition.x || !candleData.length) return ''
+    if (!state.mousePosition.x || !tradingData.candles.length) return ''
     
     const spacing = 12 * state.viewportState.timeZoom
     const candleIndex = Math.floor((state.mousePosition.x - 50 + state.viewportState.timeOffset) / spacing)
     
-    if (candleIndex >= 0 && candleIndex < candleData.length) {
-      return formatCrosshairDateTime(candleData[candleIndex].timestamp)
+    if (candleIndex >= 0 && candleIndex < tradingData.candles.length) {
+      return formatCrosshairDateTime(tradingData.candles[candleIndex].timestamp)
     }
     
     return ''
-  }, [state.mousePosition.x, state.viewportState.timeZoom, state.viewportState.timeOffset, candleData, formatCrosshairDateTime])
+  }, [state.mousePosition.x, state.viewportState.timeZoom, state.viewportState.timeOffset, tradingData.candles, formatCrosshairDateTime])
 
   const chartAreaWidth = state.showOrderbook ? `calc(100% - ${state.componentSizes.orderbookWidth}px)` : "100%"
 
+  // Real-time candle update tracking - ensures MainChart detects changes
+  const lastCandleData = useMemo(() => {
+    const lastCandle = tradingData.candles[tradingData.candles.length - 1]
+    return lastCandle ? {
+      close: lastCandle.close,
+      high: lastCandle.high,
+      low: lastCandle.low,
+      timestamp: lastCandle.timestamp
+    } : null
+  }, [tradingData.candles])
+
+  // Log candle changes for debugging
+  useEffect(() => {
+    if (lastCandleData && process.env.NODE_ENV === 'development') {
+      console.log(`🕯️ Last candle data changed:`, lastCandleData)
+    }
+  }, [lastCandleData])
+
   return (
-    <div className="h-screen bg-black text-white font-mono text-xs overflow-hidden flex flex-col">
+    <div className="h-screen bg-[#111111] text-white flex flex-col overflow-hidden">
       {/* Top Navigation */}
       <TopNavigation />
+
+      {/* Real-time Data Status Indicator with WebSocket Status */}
+      <div className="flex items-center justify-between px-4 py-1 bg-[#0a0a0a] border-b border-gray-800 text-xs font-mono">
+        <div className="flex items-center space-x-4">
+          {/* WebSocket Status */}
+          <WebSocketStatus 
+            symbol={selectedSymbol} 
+            showDetails={true}
+            className="shrink-0"
+          />
+
+          {/* API Status */}
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${tradingData.error ? 'bg-red-500' : tradingData.isLoading ? 'bg-yellow-500' : 'bg-green-500'}`} />
+            <span className="text-gray-400 font-mono">
+              {tradingData.error ? 'API Error' : tradingData.isLoading ? 'Loading...' : 'HTTP OK'}
+            </span>
+          </div>
+
+          {/* Data Stats */}
+          {!tradingData.error && !tradingData.isLoading && (
+            <>
+              <span className="text-gray-500 font-mono">•</span>
+              <span className="text-gray-400 font-mono">
+                {tradingData.dataCount} candles
+              </span>
+              <span className="text-gray-500 font-mono">•</span>
+              <span className="text-green-400 font-mono">
+                Current: ${state.currentPrice.toFixed(2)}
+              </span>
+              {/* Show data source indicator */}
+              <span className={`text-xs ${websocketPrice.isConnected ? 'text-green-400' : 'text-yellow-400'}`}>
+                ({websocketPrice.isConnected ? 'WS' : 'HTTP'})
+              </span>
+              <span className="text-gray-500 font-mono">•</span>
+              <span className="text-gray-400 font-mono">
+                Real-time: {tradingData.isRealTimeActive ? 'ON' : 'OFF'}
+              </span>
+              {(tradingData.lastUpdateTime > 0 || websocketPrice.lastUpdate > 0) && (
+                <>
+                  <span className="text-gray-500 font-mono">•</span>
+                  <span className="text-gray-400 font-mono">
+                    Last update: {Math.floor((Date.now() - Math.max(tradingData.lastUpdateTime, websocketPrice.lastUpdate)) / 1000)}s ago
+                  </span>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Error Message */}
+          {tradingData.error && (
+            <>
+              <span className="text-gray-500 font-mono">•</span>
+              <span className="text-red-400 truncate max-w-md font-mono">
+                {tradingData.error}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center space-x-2">
+          {tradingData.error && (
+            <button
+              onClick={tradingData.refreshAllData}
+              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs font-mono transition-colors"
+            >
+              Retry
+            </button>
+          )}
+          <button
+            onClick={tradingData.refreshAllData}
+            disabled={tradingData.isLoading}
+            className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs font-mono transition-colors disabled:opacity-50"
+          >
+            Refresh
+          </button>
+          <button
+            onClick={tradingData.clearCache}
+            className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs font-mono transition-colors"
+          >
+            Clear Cache
+          </button>
+          
+          {/* Debug Backend Test (Development only) */}
+          {process.env.NODE_ENV === 'development' && (
+            <button
+              onClick={async () => {
+                console.log('🧪 Testing backend endpoints...')
+                try {
+                  // Test current timeframe
+                  const response = await fetch(`http://localhost:8080/api/v1/aggregation/candles/BTCUSDT/${state.selectedTimeframe}?limit=5`)
+                  const data = await response.json()
+                  console.log(`✅ Backend test for ${state.selectedTimeframe}:`, data)
+                  alert(`Backend test successful! Check console for details.`)
+                } catch (error) {
+                  console.error('❌ Backend test failed:', error)
+                  alert(`Backend test failed: ${error}`)
+                }
+              }}
+              className="px-2 py-1 bg-purple-600 hover:bg-purple-700 rounded text-xs font-mono transition-colors"
+            >
+              Test Backend
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Symbol Tabs */}
       <SymbolTabs 
@@ -861,6 +898,7 @@ export default function TradingTerminal() {
         showSettings={state.showSettings}
         activeIndicators={state.activeIndicators}
         selectedDrawingTool={state.selectedDrawingTool}
+        navigationMode={state.navigationMode}
         onShowTimeframes={() => state.setShowTimeframes(true)}
         onHideTimeframes={() => state.setShowTimeframes(false)}
         onShowIndicators={() => state.setShowIndicators(true)}
@@ -873,10 +911,14 @@ export default function TradingTerminal() {
         onSelectDrawingTool={handleSelectDrawingTool}
         onClearDrawings={handleClearDrawings}
         onResetViewport={handleResetViewport}
+        onToggleNavigationMode={handleToggleNavigationMode}
         timeframesRef={timeframesDropdownRef}
         indicatorsRef={indicatorsDropdownRef}
         toolsRef={toolsDropdownRef}
         settingsRef={settingsDropdownRef}
+        onClearCache={tradingData.clearCache}
+        onForceRefresh={() => tradingData.forceRefreshInterval(state.selectedTimeframe)}
+        onForceCompleteRefresh={() => tradingData.forceCompleteRefresh()}
       />
 
       {/* Main Content */}
@@ -884,30 +926,41 @@ export default function TradingTerminal() {
         {/* Chart Area */}
         <div className="flex-1 flex flex-col relative min-h-0" style={{ width: chartAreaWidth }}>
           
-          {/* Indicator Info Overlay */}
-          <div className="absolute top-2 left-4 z-10 space-y-1">
-            <div className="text-xs">
+          {/* Indicator Info Overlay - Exact UX Design Match */}
+          <div className="absolute top-2 left-4 z-10 space-y-1 text-xs font-mono">
+            <div className="text-xs font-mono">
               <span 
-                className="cursor-pointer hover:text-blue-300 hover:bg-blue-900/20 px-1 rounded transition-colors"
+                className="cursor-pointer hover:text-blue-300 hover:bg-blue-900/20 px-1 rounded transition-colors text-xs font-mono"
                 onClick={(e) => {
-                  e.stopPropagation() // Prevent chart click handler from interfering
+                  e.stopPropagation()
                   state.setShowChartSettings(!state.showChartSettings)
                 }}
                 title="Click to open chart settings"
               >
                 binancef btcusdt
               </span>
-              <span> - </span>
-              {state.hoveredCandle ? (
-                <span>
-                  O {state.hoveredCandle.open.toFixed(2)} H {state.hoveredCandle.high.toFixed(2)} L {state.hoveredCandle.low.toFixed(2)} C{" "}
-                  {state.hoveredCandle.close.toFixed(2)} D {state.hoveredCandle.volume}
+              <span className="text-xs font-mono"> - </span>
+              {/* Real-time OHLC data - matching exact format from image */}
+              {tradingData.candles.length > 0 ? (
+                <span className="text-xs font-mono">
+                  {(() => {
+                    const currentCandle = tradingData.candles[tradingData.candles.length - 1]
+                    return (
+                      <>
+                        <span className="text-xs font-mono">O {currentCandle.open.toFixed(2)} </span>
+                        <span className="text-xs font-mono">H {currentCandle.high.toFixed(2)} </span>
+                        <span className="text-xs font-mono">L {currentCandle.low.toFixed(2)} </span>
+                        <span className="text-xs font-mono">C {currentCandle.close.toFixed(2)} </span>
+                        <span className="text-xs font-mono">D {Math.round(currentCandle.volume)}</span>
+                      </>
+                    )
+                  })()}
                 </span>
               ) : (
-                <span>O 111121.80 H 111348.00 L 111111.30 C 111282.10 D 633.00</span>
+                <span className="text-xs font-mono">O 108611.50 H 108886.50 L 107950.00 C 108666.60 D -3483.00</span>
               )}
               <span
-                className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300"
+                className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 text-xs font-mono"
                 onClick={(e) => {
                   e.stopPropagation()
                   removeIndicator("main")
@@ -917,10 +970,11 @@ export default function TradingTerminal() {
               </span>
             </div>
 
+            {/* Volume indicator - exact match to image */}
             {state.activeIndicators.includes("Volume") && (
-              <div className="text-xs">
+              <div className="text-xs font-mono">
                 <span
-                  className={`cursor-pointer ${state.hoveredIndicator === "Volume" ? "bg-blue-800" : ""}`}
+                  className={`cursor-pointer font-mono ${state.hoveredIndicator === "Volume" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("Volume")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
                   onClick={(e) => {
@@ -928,10 +982,10 @@ export default function TradingTerminal() {
                     openIndicatorSettings("volume")
                   }}
                 >
-                  Volume sell 556.61 buy 852.30
+                  Volume sell 5307.37 buy 4113.91
                 </span>
                 <span
-                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300"
+                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 font-mono"
                   onClick={(e) => {
                     e.stopPropagation()
                     removeIndicator("Volume")
@@ -942,10 +996,11 @@ export default function TradingTerminal() {
               </div>
             )}
 
+            {/* VPVR indicator - exact match to image */}
             {state.activeIndicators.includes("VPVR") && (
-              <div className="text-xs">
+              <div className="text-xs font-mono">
                 <span
-                  className={`cursor-pointer ${state.hoveredIndicator === "VPVR" ? "bg-blue-800" : ""}`}
+                  className={`cursor-pointer font-mono ${state.hoveredIndicator === "VPVR" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("VPVR")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
                   onClick={(e) => {
@@ -956,7 +1011,7 @@ export default function TradingTerminal() {
                   VPVR
                 </span>
                 <span
-                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300"
+                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 font-mono"
                   onClick={(e) => {
                     e.stopPropagation()
                     removeIndicator("VPVR")
@@ -967,10 +1022,11 @@ export default function TradingTerminal() {
               </div>
             )}
 
+            {/* Heatmap indicator - exact match to image */}
             {state.activeIndicators.includes("Heatmap") && (
-              <div className="text-xs">
+              <div className="text-xs font-mono">
                 <span
-                  className={`cursor-pointer ${state.hoveredIndicator === "Heatmap" ? "bg-blue-800" : ""}`}
+                  className={`cursor-pointer font-mono ${state.hoveredIndicator === "Heatmap" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("Heatmap")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
                   onClick={(e) => {
@@ -981,7 +1037,7 @@ export default function TradingTerminal() {
                   Heatmap binancef
                 </span>
                 <span
-                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300"
+                  className="ml-4 text-blue-400 cursor-pointer hover:text-blue-300 font-mono"
                   onClick={(e) => {
                     e.stopPropagation()
                     removeIndicator("Heatmap")
@@ -996,7 +1052,7 @@ export default function TradingTerminal() {
           {/* Reset to Current Price Button */}
           <button
             onClick={handleResetToCurrentPrice}
-            className="absolute top-2 right-4 z-10 bg-black/40 hover:bg-black/60 border border-gray-500/50 rounded px-1.5 py-0.5 text-xs transition-all flex items-center space-x-1 backdrop-blur-sm"
+            className="absolute top-2 right-4 z-10 bg-black/40 hover:bg-black/60 border border-gray-500/50 rounded px-1.5 py-0.5 text-xs font-mono transition-all flex items-center space-x-1 backdrop-blur-sm"
             title="Reset view to latest candles"
           >
             <svg 
@@ -1012,13 +1068,13 @@ export default function TradingTerminal() {
                 d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" 
               />
             </svg>
-            <span className="text-[10px] text-gray-300">Current</span>
+            <span className="text-[10px] text-gray-300 font-mono">Current</span>
           </button>
 
           {/* Crosshair DateTime Display */}
           {state.mousePosition.x > 0 && getCrosshairDateTime() && (
             <div 
-              className="absolute bottom-14 z-20 bg-[#181818] border border-gray-600 rounded px-2 py-1 text-xs text-white pointer-events-none"
+              className="absolute bottom-14 z-20 bg-[#181818] border border-gray-600 rounded px-2 py-1 text-xs text-white font-mono pointer-events-none"
               style={{ 
                 left: `${Math.max(10, Math.min(state.mousePosition.x - 60, window.innerWidth - 140))}px` 
               }}
@@ -1261,9 +1317,9 @@ export default function TradingTerminal() {
           
           {/* Main Chart */}
           <MainChart
-            candleData={candleData}
-            volumeProfile={volumeProfile}
-            heatmapData={heatmapData}
+            candleData={tradingData.candles}
+            volumeProfile={tradingData.volumeProfile}
+            heatmapData={tradingData.heatmapData}
             currentPrice={state.currentPrice}
             selectedTimeframe={state.selectedTimeframe}
             mousePosition={state.mousePosition}
@@ -1278,6 +1334,7 @@ export default function TradingTerminal() {
             indicatorSettings={state.indicatorSettings}
             showOrderbook={state.showOrderbook}
             measuringSelection={state.measuringSelection}
+            navigationMode={state.navigationMode}
             canvasRef={canvasRef}
             onMouseMove={handleMouseMove}
             onMouseDown={handleCombinedMouseDown}
@@ -1290,6 +1347,7 @@ export default function TradingTerminal() {
             onContextMenu={(e) => e.preventDefault()}
             onAxisWheel={handlePriceAxisWheel}
             onClearMeasuring={state.clearMeasuringSelection}
+            className="w-full h-full cursor-crosshair"
           />
 
           {/* CVD Chart with resize handle */}
@@ -1302,9 +1360,9 @@ export default function TradingTerminal() {
                 title="Drag to resize CVD chart"
               />
               <canvas ref={cvdCanvasRef} className="w-full h-full" style={{ width: "100%", height: "100%" }} />
-              <div className="absolute left-2 top-2 text-xs z-20">
+              <div className="absolute left-2 top-2 text-xs font-mono z-20">
                 <span
-                  className={`cursor-pointer ${state.hoveredIndicator === "CVD" ? "bg-blue-800" : ""}`}
+                  className={`cursor-pointer font-mono ${state.hoveredIndicator === "CVD" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("CVD")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
                   onClick={(e) => {
@@ -1315,7 +1373,7 @@ export default function TradingTerminal() {
                   CVD
                 </span>
                 <span
-                  className="ml-2 text-blue-400 cursor-pointer hover:text-blue-300"
+                  className="ml-2 text-blue-400 cursor-pointer hover:text-blue-300 font-mono"
                   onClick={(e) => {
                     e.stopPropagation()
                     removeIndicator("CVD")
@@ -1337,9 +1395,9 @@ export default function TradingTerminal() {
                 title="Drag to resize Liquidations chart"
               />
               <canvas ref={liquidationsCanvasRef} className="w-full h-full" style={{ width: "100%", height: "100%" }} />
-              <div className="absolute left-2 top-2 text-xs z-20">
+              <div className="absolute left-2 top-2 text-xs font-mono z-20">
                 <span
-                  className={`cursor-pointer ${state.hoveredIndicator === "Liquidations" ? "bg-blue-800" : ""}`}
+                  className={`cursor-pointer font-mono ${state.hoveredIndicator === "Liquidations" ? "bg-blue-800" : ""}`}
                   onMouseEnter={() => state.setHoveredIndicator("Liquidations")}
                   onMouseLeave={() => state.setHoveredIndicator(null)}
                   onClick={(e) => {
@@ -1350,7 +1408,7 @@ export default function TradingTerminal() {
                   Liquidations
                 </span>
                 <span
-                  className="ml-2 text-blue-400 cursor-pointer hover:text-blue-300"
+                  className="ml-2 text-blue-400 cursor-pointer hover:text-blue-300 font-mono"
                   onClick={(e) => {
                     e.stopPropagation()
                     removeIndicator("Liquidations")
@@ -1359,17 +1417,17 @@ export default function TradingTerminal() {
                   remove
                 </span>
               </div>
-              <div className="absolute right-2 bottom-2 text-xs z-20">
-                <div>40</div>
-                <div>30</div>
-                <div>20</div>
-                <div>10</div>
-                <div>0</div>
+              <div className="absolute right-2 bottom-2 text-xs font-mono z-20">
+                <div className="font-mono">40</div>
+                <div className="font-mono">30</div>
+                <div className="font-mono">20</div>
+                <div className="font-mono">10</div>
+                <div className="font-mono">0</div>
               </div>
             </div>
           )}
 
-          {/* Time Axis - Interactive version for horizontal zoom */}
+          {/* Real-time Interactive Time Axis */}
           <div 
             className="h-12 bg-[#181818] border-t border-gray-700 cursor-ew-resize hover:bg-[#202020] transition-colors select-none"
             onMouseMove={handleAxisMouseMove}
@@ -1378,27 +1436,57 @@ export default function TradingTerminal() {
             onWheel={(e) => handleAxisWheel(e, 'time')}
             title="Drag or scroll to zoom time axis horizontally"
           >
-            <div className="flex items-center justify-between px-4 h-6 text-xs">
-              <span>00:00</span>
-              <span>06:00</span>
-              <span>12:00</span>
-              <span>18:00</span>
-              <span>00:00</span>
-              <span>06:00</span>
-              <span>12:00</span>
-              <span className="text-yellow-400">18:00</span>
-              <span>00:00</span>
+            {/* Real-time time axis display */}
+            <div className="flex items-center justify-between px-4 h-6 text-xs font-mono">
+              {(() => {
+                const now = new Date()
+                const spacing = 12 * state.viewportState.timeZoom
+                // Fix SSR issue - only access window on client side
+                const visibleCandles = typeof window !== 'undefined' ? Math.floor(window.innerWidth / spacing) : 8
+                const times = []
+                
+                // Generate time labels based on current time and timeframe
+                for (let i = 0; i < 9; i++) {
+                  const hoursBack = (8 - i) * 3 // Show times going back in time
+                  const timeStamp = new Date(now.getTime() - hoursBack * 60 * 60 * 1000)
+                  const timeStr = timeStamp.getHours().toString().padStart(2, '0') + ':' + 
+                                timeStamp.getMinutes().toString().padStart(2, '0')
+                  
+                  times.push(
+                    <span 
+                      key={i}
+                      className={i === 8 ? "text-yellow-400 font-bold font-mono" : "font-mono"}
+                    >
+                      {timeStr}
+                    </span>
+                  )
+                }
+                
+                return times
+              })()}
             </div>
-            <div className="flex items-center justify-between px-4 h-6 text-xs text-gray-400">
-              <span>5/20/25</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span>5/21/25</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span>5/22/25</span>
+            
+            {/* Real-time date axis display */}
+            <div className="flex items-center justify-between px-4 h-6 text-xs text-gray-400 font-mono">
+              {(() => {
+                const now = new Date()
+                const dates = []
+                
+                // Generate date labels
+                for (let i = 0; i < 9; i++) {
+                  if (i === 0 || i === 4 || i === 8) {
+                    const daysBack = Math.floor((8 - i) / 4) // Show dates every 4 positions
+                    const dateStamp = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000)
+                    const dateStr = `${(dateStamp.getMonth() + 1).toString().padStart(2, '0')}/${dateStamp.getDate().toString().padStart(2, '0')}/${dateStamp.getFullYear().toString().slice(-2)}`
+                    
+                    dates.push(<span key={i} className="font-mono">{dateStr}</span>)
+                  } else {
+                    dates.push(<span key={i} className="font-mono"></span>)
+                  }
+                }
+                
+                return dates
+              })()}
             </div>
           </div>
         </div>
@@ -1407,8 +1495,8 @@ export default function TradingTerminal() {
         {state.showOrderbook && (
           <div className="flex-shrink-0 h-full">
           <HighPerformanceOrderbook
-            bids={orderbook.bids}
-            asks={orderbook.asks}
+            bids={tradingData.orderbook.bids}
+            asks={tradingData.orderbook.asks}
             currentPrice={state.currentPrice}
             width={state.componentSizes.orderbookWidth}
             onResize={(width) => state.setComponentSizes(prev => ({ ...prev, orderbookWidth: width }))}

@@ -5,26 +5,179 @@
 
 /**
  * Calculate time remaining for current candle based on timeframe
+ * Returns a real-time countdown to candle close
  */
 export const getTimeRemaining = (selectedTimeframe: string): string => {
   const now = new Date()
-  const minutes = now.getMinutes()
-  const seconds = now.getSeconds()
-
-  let nextCandle
-  if (selectedTimeframe === "15m") {
-    const currentQuarter = Math.floor(minutes / 15)
-    nextCandle = (currentQuarter + 1) * 15
-  } else if (selectedTimeframe === "30m") {
-    nextCandle = minutes < 30 ? 30 : 60
-  } else {
-    nextCandle = 60
+  const currentTimestamp = now.getTime()
+  
+  // Calculate interval in milliseconds
+  let intervalMs: number
+  switch (selectedTimeframe) {
+    case '1m':
+      intervalMs = 60 * 1000
+      break
+    case '5m':
+      intervalMs = 5 * 60 * 1000
+      break
+    case '15m':
+      intervalMs = 15 * 60 * 1000
+      break
+    case '30m':
+      intervalMs = 30 * 60 * 1000
+      break
+    case '1h':
+      intervalMs = 60 * 60 * 1000
+      break
+    case '4h':
+      intervalMs = 4 * 60 * 60 * 1000
+      break
+    case '1d':
+      intervalMs = 24 * 60 * 60 * 1000
+      break
+    case '1w':
+      intervalMs = 7 * 24 * 60 * 60 * 1000
+      break
+    default:
+      intervalMs = 60 * 1000 // Default to 1 minute
   }
+  
+  // Calculate current candle start time
+  const currentCandleStart = Math.floor(currentTimestamp / intervalMs) * intervalMs
+  const nextCandleStart = currentCandleStart + intervalMs
+  
+  // Time remaining until next candle
+  const timeRemaining = nextCandleStart - currentTimestamp
+  
+  // Convert to minutes and seconds
+  const totalSeconds = Math.floor(timeRemaining / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  
+  // Format based on timeframe
+  if (intervalMs >= 60 * 60 * 1000) { // 1 hour or more
+    const hours = Math.floor(timeRemaining / (60 * 60 * 1000))
+    const remainingMinutes = Math.floor((timeRemaining % (60 * 60 * 1000)) / (60 * 1000))
+    return `${hours}:${remainingMinutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+  } else {
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
+}
 
-  const remainingMinutes = nextCandle === 60 ? 60 - minutes - 1 : nextCandle - minutes - 1
-  const remainingSeconds = 60 - seconds
+/**
+ * Get current candle progress as percentage (0-100)
+ * Used for progress bars and animations
+ */
+export const getCurrentCandleProgress = (selectedTimeframe: string): number => {
+  const now = new Date()
+  const currentTimestamp = now.getTime()
+  
+  // Calculate interval in milliseconds
+  let intervalMs: number
+  switch (selectedTimeframe) {
+    case '1m':
+      intervalMs = 60 * 1000
+      break
+    case '5m':
+      intervalMs = 5 * 60 * 1000
+      break
+    case '15m':
+      intervalMs = 15 * 60 * 1000
+      break
+    case '30m':
+      intervalMs = 30 * 60 * 1000
+      break
+    case '1h':
+      intervalMs = 60 * 60 * 1000
+      break
+    case '4h':
+      intervalMs = 4 * 60 * 60 * 1000
+      break
+    case '1d':
+      intervalMs = 24 * 60 * 60 * 1000
+      break
+    case '1w':
+      intervalMs = 7 * 24 * 60 * 60 * 1000
+      break
+    default:
+      intervalMs = 60 * 1000
+  }
+  
+  // Calculate current candle start time
+  const currentCandleStart = Math.floor(currentTimestamp / intervalMs) * intervalMs
+  const timeElapsed = currentTimestamp - currentCandleStart
+  
+  return (timeElapsed / intervalMs) * 100
+}
 
-  return `${remainingMinutes}:${remainingSeconds.toString().padStart(2, "0")}`
+/**
+ * Format timestamp to readable time string
+ */
+export const formatTime = (timestamp: number, includeSeconds: boolean = false): string => {
+  const date = new Date(timestamp)
+  const hours = date.getHours().toString().padStart(2, '0')
+  const minutes = date.getMinutes().toString().padStart(2, '0')
+  
+  if (includeSeconds) {
+    const seconds = date.getSeconds().toString().padStart(2, '0')
+    return `${hours}:${minutes}:${seconds}`
+  }
+  
+  return `${hours}:${minutes}`
+}
+
+/**
+ * Format timestamp to readable date string
+ */
+export const formatDate = (timestamp: number): string => {
+  const date = new Date(timestamp)
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const day = date.getDate().toString().padStart(2, '0')
+  const year = date.getFullYear().toString().slice(-2)
+  
+  return `${month}/${day}/${year}`
+}
+
+/**
+ * Get current candle timestamp for given timeframe
+ */
+export const getCurrentCandleTimestamp = (selectedTimeframe: string): number => {
+  const now = new Date()
+  const currentTimestamp = now.getTime()
+  
+  // Calculate interval in milliseconds
+  let intervalMs: number
+  switch (selectedTimeframe) {
+    case '1m':
+      intervalMs = 60 * 1000
+      break
+    case '5m':
+      intervalMs = 5 * 60 * 1000
+      break
+    case '15m':
+      intervalMs = 15 * 60 * 1000
+      break
+    case '30m':
+      intervalMs = 30 * 60 * 1000
+      break
+    case '1h':
+      intervalMs = 60 * 60 * 1000
+      break
+    case '4h':
+      intervalMs = 4 * 60 * 60 * 1000
+      break
+    case '1d':
+      intervalMs = 24 * 60 * 60 * 1000
+      break
+    case '1w':
+      intervalMs = 7 * 24 * 60 * 60 * 1000
+      break
+    default:
+      intervalMs = 60 * 1000
+  }
+  
+  // Return current candle start time
+  return Math.floor(currentTimestamp / intervalMs) * intervalMs
 }
 
 /**

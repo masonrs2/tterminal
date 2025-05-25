@@ -20,13 +20,6 @@ export const MeasuringToolTooltip: React.FC<MeasuringToolTooltipProps> = ({
   selectedTimeframe,
   onClose,
 }) => {
-  console.log('MeasuringToolTooltip render check:', { 
-    isActive: measuringSelection.isActive,
-    startX: measuringSelection.startX,
-    endX: measuringSelection.endX,
-    startY: measuringSelection.startY,
-    endY: measuringSelection.endY
-  })
   
   if (!measuringSelection.isActive) return null
   
@@ -99,7 +92,7 @@ export const MeasuringToolTooltip: React.FC<MeasuringToolTooltipProps> = ({
 
   return (
     <div
-      className={`absolute z-50 ${bgColor} text-white text-xs rounded p-3 shadow-lg ${borderColor} border`}
+      className={`absolute z-50 ${bgColor} text-white text-xs font-mono rounded p-3 shadow-lg ${borderColor} border`}
       style={{
         left: `${tooltipX}px`,
         top: `${tooltipY}px`,
@@ -108,13 +101,13 @@ export const MeasuringToolTooltip: React.FC<MeasuringToolTooltipProps> = ({
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <div className={`font-medium ${textPrimaryColor} text-sm leading-tight`}>
+          <div className={`font-medium ${textPrimaryColor} text-sm font-mono leading-tight`}>
             {Math.abs(priceChange).toFixed(2)} ({Math.abs(percentChange).toFixed(2)}%) {(totalVolume / 1000000).toFixed(2)}M
           </div>
-          <div className={`${textSecondaryColor} text-xs`}>
+          <div className={`${textSecondaryColor} text-xs font-mono`}>
             {barsCount} bars, {duration}
           </div>
-          <div className={`${textSecondaryColor} text-xs`}>
+          <div className={`${textSecondaryColor} text-xs font-mono`}>
             Vol {(totalVolume / 1000000).toFixed(2)}M
           </div>
         </div>

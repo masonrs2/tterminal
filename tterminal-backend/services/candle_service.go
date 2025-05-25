@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 	"tterminal-backend/internal/binance"
@@ -21,6 +22,13 @@ type CandleService struct {
 
 // NewCandleService creates a new ultra-fast candle service
 func NewCandleService(candleRepo *repositories.CandleRepository, binanceClient *binance.Client) *CandleService {
+	if candleRepo == nil {
+		log.Fatalf("[CandleService] CRITICAL: repo cannot be nil")
+	}
+	if binanceClient == nil {
+		log.Printf("[CandleService] WARNING: binanceClient is nil - only database operations will work")
+	}
+	log.Printf("[CandleService] Successfully initialized")
 	return &CandleService{
 		candleRepo:    candleRepo,
 		binanceClient: binanceClient,
@@ -315,7 +323,76 @@ func (s *CandleService) validateCandle(candle *models.Candle) error {
 
 // GetBySymbolAndInterval retrieves candles for a symbol and interval (alias for GetCandles)
 func (s *CandleService) GetBySymbolAndInterval(ctx context.Context, symbol, interval string, limit int) ([]models.Candle, error) {
-	return s.GetCandles(ctx, symbol, interval, limit)
+	log.Printf("[CandleService] GetBySymbolAndInterval called: symbol=%s, interval=%s, limit=%d", symbol, interval, limit)
+
+	// Validate inputs
+	if symbol == "" {
+		err := fmt.Errorf("symbol cannot be empty")
+		log.Printf("[CandleService] Validation error: %v", err)
+		return nil, err
+	}
+	if interval == "" {
+		err := fmt.Errorf("interval cannot be empty")
+		log.Printf("[CandleService] Validation error: %v", err)
+		return nil, err
+	}
+	if limit <= 0 {
+		err := fmt.Errorf("limit must be positive, got %d", limit)
+		log.Printf("[CandleService] Validation error: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[CandleService] Attempting to get data from database first...")
+
+	// Try to get from database first
+	if s.candleRepo == nil {
+		err := fmt.Errorf("repository is not initialized")
+		log.Printf("[CandleService] CRITICAL ERROR: %v", err)
+		return nil, err
+	}
+
+	candles, err := s.candleRepo.GetBySymbolAndInterval(ctx, symbol, interval, limit)
+	if err != nil {
+		log.Printf("[CandleService] Database error: %v", err)
+		// Don't return here, try Binance API as fallback
+	} else if len(candles) > 0 {
+		log.Printf("[CandleService] Successfully retrieved %d candles from database", len(candles))
+		return candles, nil
+	} else {
+		log.Printf("[CandleService] No candles found in database, trying Binance API...")
+	}
+
+	// Fallback to Binance API if database is empty or fails
+	if s.binanceClient == nil {
+		err := fmt.Errorf("no data in database and Binance client is not available")
+		log.Printf("[CandleService] ERROR: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[CandleService] Fetching data from Binance API...")
+
+	// Get data from Binance using the optimized method
+	candles, err = s.binanceClient.GetKlinesOptimized(ctx, symbol, interval, limit)
+	if err != nil {
+		err = fmt.Errorf("failed to get data from Binance API: %w", err)
+		log.Printf("[CandleService] Binance API error: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[CandleService] Retrieved %d candles from Binance API", len(candles))
+
+	// Store in database for future use (non-blocking)
+	go func() {
+		ctx := context.Background()
+		if err := s.candleRepo.BulkCreate(ctx, candles); err != nil {
+			log.Printf("[CandleService] WARNING: Failed to store candles in database: %v", err)
+		} else {
+			log.Printf("[CandleService] Successfully stored %d candles in database", len(candles))
+		}
+	}()
+
+	log.Printf("[CandleService] Returning %d candles to caller", len(candles))
+	return candles, nil
 }
 
 // GetByTimeRange retrieves candles within a time range

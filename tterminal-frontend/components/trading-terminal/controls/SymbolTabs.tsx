@@ -31,7 +31,7 @@ export const SymbolTabs: React.FC<SymbolTabsProps> = ({
   }
 
   return (
-    <div className={`h-8 bg-[#181818] flex items-center px-2 border-b border-gray-700 ${className}`}>
+    <div className={`h-8 bg-[#181818] flex items-center px-2 border-b border-gray-700 font-mono ${className}`}>
       <div className="flex space-x-1">
         {tradingPairs.map((pair) => (
           <div 
@@ -46,7 +46,7 @@ export const SymbolTabs: React.FC<SymbolTabsProps> = ({
             {pair.symbol === activePair && (
               <TrendingUp className="w-3 h-3 mr-1 text-blue-300" />
             )}
-            <span className="text-xs">{pair.exchange} {pair.symbol}</span>
+            <span className="text-xs font-mono">{pair.exchange} {pair.symbol}</span>
             {pair.symbol === activePair ? (
               <X className="w-3 h-3 ml-1 cursor-pointer hover:text-red-400 transition-colors" />
             ) : pair.symbol !== 'btcusdt' && ( // Don't show X for non-active tabs except btcusdt
@@ -59,7 +59,7 @@ export const SymbolTabs: React.FC<SymbolTabsProps> = ({
         <div className="flex items-center space-x-2">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Live data feed"></div>
           <span
-            className={`text-xs cursor-pointer transition-colors ${
+            className={`text-xs font-mono cursor-pointer transition-colors ${
               showChartSettings ? 'text-blue-300' : 'hover:text-blue-400'
             }`}
             onClick={onToggleChartSettings}
