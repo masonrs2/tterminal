@@ -131,7 +131,96 @@ export default function TradingTerminal() {
     
     // Load new interval data
     await tradingData.loadInterval(timeframe)
+    
+    // Navigation will be handled by the useEffect below that watches for candle changes
   }, [state.setSelectedTimeframe, state.setShowTimeframes, tradingData.loadInterval])
+
+  // 🎯 AUTOMATIC NAVIGATION TO CURRENT CANDLES after timeframe changes
+  // This useEffect triggers when candles actually update, ensuring reliable navigation
+  useEffect(() => {
+    // Only navigate if we have candles and this looks like a timeframe switch
+    if (tradingData.candles.length === 0) return
+    
+    // Add a small delay to ensure the chart is ready
+    const navigationTimeout = setTimeout(() => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      
+      console.log(`📍 Auto-navigating after timeframe change: ${tradingData.candles.length} candles loaded`)
+      
+      // Use the same logic as the "Current" button for reliability
+      const spacing = 12 * 1 // Use default zoom for calculation
+      const canvasWidth = canvas.offsetWidth
+      const rightMargin = 100 // Keep some margin from the right edge
+      
+      // Calculate how many candles should be visible on screen
+      const idealVisibleCandles = Math.floor((canvasWidth - rightMargin) / spacing)
+      const totalCandles = tradingData.candles.length
+      
+      if (totalCandles <= idealVisibleCandles) {
+        // Show all candles if we have fewer than what fits on screen
+        const totalWidth = totalCandles * spacing
+        const targetOffset = Math.max(0, totalWidth - canvasWidth + rightMargin)
+        
+        state.setViewportState({
+          priceZoom: 1,
+          timeZoom: 1,
+          priceOffset: 0,
+          timeOffset: targetOffset,
+        })
+        
+        console.log(`📍 Showing ALL ${totalCandles} candles (positioned on right side)`)
+      } else {
+        // Show the last portion if we have more candles than fit on screen
+        const candlesToShow = idealVisibleCandles
+        const startIndex = Math.max(0, totalCandles - candlesToShow)
+        const targetOffset = startIndex * spacing
+        
+        state.setViewportState({
+          priceZoom: 1,
+          timeZoom: 1,
+          priceOffset: 0,
+          timeOffset: targetOffset,
+        })
+        
+        console.log(`📍 Showing last ${candlesToShow} of ${totalCandles} candles`)
+      }
+    }, 100) // Small delay to ensure everything is ready
+    
+    return () => clearTimeout(navigationTimeout)
+  }, [tradingData.candles.length, state.selectedTimeframe, state.setViewportState]) // Trigger when candles or timeframe changes
+
+  // Reset chart to current price position (latest bars)
+  const handleResetToCurrentPrice = useCallback(() => {
+    // Calculate offset to show latest candles on the right side
+    const canvas = canvasRef.current
+    if (!canvas || tradingData.candles.length === 0) return
+    
+    // 🔧 IMPROVED CALCULATION for different timeframe scales (same as timeframe switching)
+    const spacing = 12 * 1 // Use default zoom for calculation
+    const canvasWidth = canvas.offsetWidth
+    const rightMargin = 100 // Keep some margin from the right edge
+    
+    // Calculate how many candles should be visible on screen (adaptive to timeframe)
+    const idealVisibleCandles = Math.floor((canvasWidth - rightMargin) / spacing)
+    
+    // For longer timeframes with fewer total candles, show all available candles
+    // For shorter timeframes with many candles, show the last portion
+    const candlesToShow = Math.min(idealVisibleCandles, tradingData.candles.length)
+    const startIndex = Math.max(0, tradingData.candles.length - candlesToShow)
+    
+    // Calculate offset to position the visible candles properly
+    const targetOffset = startIndex * spacing
+    
+    state.setViewportState({
+      priceZoom: 1,
+      timeZoom: 1,
+      priceOffset: 0,
+      timeOffset: targetOffset,
+    })
+    
+    console.log(`🎯 Reset to current candles (${tradingData.candles.length} candles, showing last ${candlesToShow})`)
+  }, [state, tradingData.candles])
 
   const handleToggleIndicator = useCallback((indicator: string) => {
     state.setActiveIndicators(prev =>
@@ -699,28 +788,6 @@ export default function TradingTerminal() {
       priceZoom: Math.max(0.01, Math.min(100, prev.priceZoom * dynamicZoomFactor))
     }))
   }, [state])
-
-  // Reset chart to current price position (latest bars)
-  const handleResetToCurrentPrice = useCallback(() => {
-    // Calculate offset to show latest candles on the right side
-    const canvas = canvasRef.current
-    if (!canvas) return
-    
-    const spacing = 12 * 1 // Use default zoom for calculation
-    const totalWidth = tradingData.candles.length * spacing
-    const canvasWidth = canvas.offsetWidth
-    const rightMargin = 100 // Keep some margin from the right edge
-    
-    // Position so latest candles are visible on the right side
-    const targetOffset = Math.max(0, totalWidth - canvasWidth + rightMargin)
-    
-    state.setViewportState({
-      priceZoom: 1,
-      timeZoom: 1,
-      priceOffset: 0,
-      timeOffset: targetOffset,
-    })
-  }, [state, tradingData.candles])
 
   // Format datetime for crosshair (e.g., "Sat, May 25 07:00")
   const formatCrosshairDateTime = useCallback((timestamp: number) => {

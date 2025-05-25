@@ -140,6 +140,13 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
   const [realTimeCountdown, setRealTimeCountdown] = useState<string>('00:00')
   const [candleProgress, setCandleProgress] = useState<number>(0)
   const [currentTime, setCurrentTime] = useState<number>(Date.now())
+  const [priceAxisKey, setPriceAxisKey] = useState<number>(0) // Force re-render of price axis
+  const priceAxisUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Price direction tracking for color changes
+  const [previousPrice, setPreviousPrice] = useState<number>(currentPrice)
+  const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'neutral'>('neutral')
+  const lastPriceChangeRef = useRef<number>(Date.now())
 
   // PERFORMANCE OPTIMIZATION: Memoize volume profile processing to prevent infinite re-renders
   const processedVolumeProfile = React.useMemo(() => {
@@ -155,8 +162,46 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
     )
   }, [volumeProfile])
 
+  // Debounced price axis re-render when viewport changes
+  useEffect(() => {
+    // Clear existing timeout
+    if (priceAxisUpdateTimeoutRef.current) {
+      clearTimeout(priceAxisUpdateTimeoutRef.current)
+    }
+    
+    // Set new timeout for debounced update
+    priceAxisUpdateTimeoutRef.current = setTimeout(() => {
+      setPriceAxisKey(prev => prev + 1)
+    }, 16) // ~60fps update rate
+    
+    return () => {
+      if (priceAxisUpdateTimeoutRef.current) {
+        clearTimeout(priceAxisUpdateTimeoutRef.current)
+      }
+    }
+  }, [viewportState.priceOffset, viewportState.priceZoom])
+
+  // Track price direction for real-time color changes
+  useEffect(() => {
+    const now = Date.now()
+    
+    // Only update direction if price changed significantly and enough time has passed
+    if (Math.abs(currentPrice - previousPrice) > 0.1 && now - lastPriceChangeRef.current > 100) {
+      const newDirection = currentPrice > previousPrice ? 'up' : 'down'
+      
+      // Only update if direction actually changed or if we're starting from neutral
+      if (priceDirection === 'neutral' || priceDirection !== newDirection) {
+        setPriceDirection(newDirection)
+      }
+      
+      setPreviousPrice(currentPrice)
+      lastPriceChangeRef.current = now
+      
+      // NEVER reset to neutral - keep the direction until price moves opposite way
+    }
+  }, [currentPrice, previousPrice, priceDirection])
+
   // Calculate STABLE price range that doesn't change with real-time updates
-  // This prevents viewport jumping by using a fixed range calculation
   const calculateStablePriceRange = useCallback(() => {
     if (candleData.length === 0) return { finalMax: 0, finalMin: 0, priceRange: 1 }
     
@@ -393,10 +438,10 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
       // Skip rendering if no valid volume data
       if (maxVolume <= 0) return
       
-      const profileWidth = 80 // Width for volume bars
+      const profileWidth = 120 // Increased width for volume bars
       
-      // Position VPVR to end exactly where the price axis overlay begins
-      const priceAxisStart = canvas.offsetWidth - (showOrderbook ? 200 : 80)
+      // Position VPVR to end exactly at the right edge (no gap)
+      const priceAxisStart = canvas.offsetWidth
 
       processedVolumeProfile.forEach((profile) => {
         const y = 50 + ((finalMax - profile.price) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
@@ -409,32 +454,10 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
           ctx.fillStyle = profile.type === "buy" ? indicatorSettings.vpvr.bullColor + "B3" : indicatorSettings.vpvr.bearColor + "B3"
         }
 
-        // Draw each volume bar ending exactly at the price axis boundary
+        // Draw each volume bar ending exactly at the right edge (no gap)
         ctx.fillRect(priceAxisStart - width, y - 2, width, 4)
       })
     }
-
-          // Draw support/resistance lines (cleaned up, no text labels)
-      ctx.strokeStyle = "#4a90e2"
-      ctx.lineWidth = 1
-      ctx.setLineDash([])
-      
-      // Only draw if within reasonable bounds
-      const supportLevel = 50 + (chartHeight * 0.7)
-      const resistanceLevel = 50 + (chartHeight * 0.3)
-      
-      ctx.beginPath()
-      ctx.moveTo(0, supportLevel)
-      ctx.lineTo(lineEndX, supportLevel)
-      ctx.stroke()
-
-      ctx.strokeStyle = "#666666"
-      ctx.setLineDash([5, 5])
-      ctx.beginPath()
-      ctx.moveTo(0, resistanceLevel)
-      ctx.lineTo(lineEndX, resistanceLevel)
-      ctx.stroke()
-      ctx.setLineDash([])
 
     // Draw candlesticks with dynamic price scaling
     const candleWidth = 8 * viewportState.timeZoom
@@ -500,14 +523,15 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
       ctx.fillRect(x, bodyTop, candleWidth, bodyHeight)
     })
 
-    // Draw current price line with dynamic scaling
-    ctx.strokeStyle = "#ffff00"
+    // Draw current price line with dynamic color matching price box
+    const currentPriceLineColor = priceDirection === 'down' ? "#ef4444" : "#22c55e" // Red for down, green for up
+    ctx.strokeStyle = currentPriceLineColor
     ctx.lineWidth = 1
     ctx.setLineDash([3, 3])
     const currentY = 50 + ((finalMax - currentPrice) / priceRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
     ctx.beginPath()
     ctx.moveTo(0, currentY)
-    ctx.lineTo(lineEndX, currentY)
+    ctx.lineTo(canvas.offsetWidth, currentY) // Extend to full width including price axis
     ctx.stroke()
     ctx.setLineDash([])
 
@@ -653,68 +677,151 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
         onMouseMove={handleAxisMouseMove}
         onMouseDown={handleAxisMouseDown}
         onMouseUp={onMouseUp}
-                  onWheel={handleAxisWheel}
-          title="Drag or scroll to zoom price axis vertically"
+        onWheel={handleAxisWheel}
+        title="Drag or scroll to zoom price axis vertically"
       >
-        <div className="flex flex-col justify-between h-full py-2 text-xs font-mono relative">
+        <div className="relative h-full w-full" key={priceAxisKey}>
           {(() => {
             // Use the SAME stable range calculation as the main chart
             const { finalMax, finalMin, priceRange: stableRange } = calculateStablePriceRange()
-            const priceStep = stableRange / 8
+            const chartHeight = canvasRef?.current?.offsetHeight ? canvasRef.current.offsetHeight - 100 : 400
             
-            return Array.from({ length: 9 }, (_, i) => {
-              const price = finalMax - (i * priceStep)
-              const isCurrentPrice = Math.abs(price - currentPrice) < priceStep / 3
-              return (
-                <div key={i} className={`text-right pr-2 text-xs font-mono ${isCurrentPrice ? 'bg-blue-500 text-white px-1 rounded' : ''}`}>
-                  {price.toFixed(1)}
+            // Generate FIXED price levels based on nice round numbers
+            const priceLabels = []
+            
+            // Calculate appropriate price step for nice round numbers
+            const roughStep = stableRange / 15 // More price levels
+            const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)))
+            const normalizedStep = roughStep / magnitude
+            
+            let niceStep
+            if (normalizedStep <= 1) niceStep = 1 * magnitude
+            else if (normalizedStep <= 2) niceStep = 2 * magnitude
+            else if (normalizedStep <= 5) niceStep = 5 * magnitude
+            else niceStep = 10 * magnitude
+            
+            // Find the starting price (round down to nearest step)
+            const startPrice = Math.floor(finalMin / niceStep) * niceStep
+            
+            // Generate price levels from bottom to top
+            for (let price = startPrice; price <= finalMax + niceStep; price += niceStep) {
+              // Calculate Y position using the SAME formula as chart candles
+              const y = 50 + ((finalMax - price) / stableRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+              
+              // Only show labels that are visible on screen
+              if (y >= 10 && y <= (canvasRef?.current?.offsetHeight || 400) - 10) {
+                // Check if this is close to the current price
+                const isNearCurrentPrice = Math.abs(price - currentPrice) < niceStep * 0.3
+                
+                priceLabels.push(
+                  <div 
+                    key={`price-${price.toFixed(2)}`}
+                    className={`absolute text-right pr-2 text-xs font-mono transition-colors ${
+                      isNearCurrentPrice 
+                        ? 'bg-blue-500 text-white px-1 rounded font-bold' 
+                        : 'text-gray-300'
+                    }`}
+                    style={{
+                      top: `${y}px`,
+                      right: '0px',
+                      transform: 'translateY(-50%)',
+                      width: '76px',
+                      lineHeight: '1.2'
+                    }}
+                  >
+                    {price.toFixed(price >= 1000 ? 0 : 1)}
+                    {isNearCurrentPrice && (
+                      <div className="inline-flex items-center ml-1">
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+            }
+            
+            // ALWAYS add the exact current price - it should never disappear
+            const currentPriceY = 50 + ((finalMax - currentPrice) / stableRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+            
+            // Show current price if it's visible on screen
+            if (currentPriceY >= 10 && currentPriceY <= (canvasRef?.current?.offsetHeight || 400) - 10) {
+              // Determine color based on price direction - NEVER show neutral/yellow
+              const getPriceColor = () => {
+                if (priceDirection === 'up') {
+                  return 'bg-green-500 text-white border-green-400'
+                } else if (priceDirection === 'down') {
+                  return 'bg-red-500 text-white border-red-400'
+                } else {
+                  // Default to green for initial state (most markets trend up over time)
+                  return 'bg-green-500 text-white border-green-400'
+                }
+              }
+              
+              const getPulseColor = () => {
+                if (priceDirection === 'up') {
+                  return 'bg-green-400'
+                } else if (priceDirection === 'down') {
+                  return 'bg-red-400'
+                } else {
+                  // Default to green pulse
+                  return 'bg-green-400'
+                }
+              }
+              
+              // Always add current price label with dynamic colors
+              priceLabels.push(
+                <div 
+                  key="current-price-live"
+                  className={`absolute text-right text-xs font-mono px-1 py-0 rounded font-bold border ${getPriceColor()}`}
+                  style={{
+                    top: `${currentPriceY}px`,
+                    right: '2px',
+                    transform: 'translateY(-50%)',
+                    width: '72px',
+                    lineHeight: '1.1',
+                    zIndex: 15, // Higher than other labels
+                    fontSize: '11px'
+                  }}
+                >
+                  <span className="font-mono">{currentPrice.toFixed(1)}</span>
+                  <div className="inline-flex items-center ml-0.5">
+                    <div className={`w-1 h-1 rounded-full animate-pulse ${getPulseColor()}`} />
+                  </div>
                 </div>
               )
-            })
+            }
+            
+            return priceLabels
           })()}
           
-          {/* Current Price Indicator - Modern Professional Design */}
+          {/* Real-time countdown - positioned relative to current price */}
           <div 
-            className="absolute right-1 bg-gray-900/90 border border-gray-600/50 backdrop-blur-sm rounded-md px-2 py-1 text-xs font-medium text-white shadow-lg transition-all duration-200 hover:bg-gray-800/90"
-            style={{
-              top: (() => {
-                if (candleData.length === 0) return '50%';
-                
-                // Use the SAME stable calculation as the main chart and price axis
-                const { finalMax, finalMin, priceRange: stableRange } = calculateStablePriceRange()
-                
-                // Calculate percentage position from top using stable range
-                const pricePosition = ((finalMax - currentPrice) / stableRange) * 100
-                return `${Math.max(2, Math.min(93, pricePosition))}%`
-              })(),
-              transform: 'translateY(-50%)'
-            }}
-          >
-            <div className="flex items-center space-x-1">
-              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-              <span className="font-mono">{currentPrice.toFixed(1)}</span>
-            </div>
-          </div>
-          
-          {/* Real-time countdown - Modern badge design */}
-          <div 
-            className="absolute right-1 bg-orange-500/90 border border-orange-400/50 backdrop-blur-sm rounded-md px-2 py-0.5 text-xs font-medium text-white shadow-lg transition-all duration-200"
+            className={`absolute right-1 border backdrop-blur-sm rounded px-1 py-0 text-xs font-mono text-white shadow-lg ${
+              priceDirection === 'down' 
+                ? 'bg-red-500/90 border-red-400/50' 
+                : 'bg-green-500/90 border-green-400/50'
+            }`}
             style={{
               top: (() => {
                 if (candleData.length === 0) return '58%';
                 
-                // Use the SAME stable calculation as all other components
+                // Use the SAME calculation as chart candles for perfect alignment
                 const { finalMax, finalMin, priceRange: stableRange } = calculateStablePriceRange()
+                const chartHeight = canvasRef?.current?.offsetHeight ? canvasRef.current.offsetHeight - 100 : 400
                 
-                // Position below the current price indicator with proper spacing using stable range
-                const pricePosition = ((finalMax - currentPrice) / stableRange) * 100
-                return `${Math.max(7, Math.min(88, pricePosition + 6))}%`
+                // Calculate Y position using the SAME formula as chart candles, offset by 18px below current price (much closer)
+                const currentPriceY = 50 + ((finalMax - currentPrice) / stableRange) * chartHeight * viewportState.priceZoom - viewportState.priceOffset
+                const countdownY = currentPriceY + 18
+                
+                return `${countdownY}px`
               })(),
-              transform: 'translateY(-50%)'
+              transform: 'translateY(-50%)',
+              fontSize: '11px',
+              lineHeight: '1.1'
             }}
           >
-            <div className="flex items-center space-x-1">
-              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+            <div className="flex items-center space-x-0.5">
+              <svg className="w-1.5 h-1.5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.707-10.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L9.414 11H13a1 1 0 100-2H9.414l1.293-1.293z" clipRule="evenodd" />
               </svg>
               <span className="font-mono text-[10px]">{realTimeCountdown}</span>
