@@ -244,7 +244,7 @@ export class TradingAPI {
       volume: candle.v,
     }))
 
-    // 🔍 ESSENTIAL API DATA VERIFICATION
+    // ESSENTIAL API DATA VERIFICATION
     if (candles.length > 0) {
       const now = Date.now()
       const timeSpan = (candles[candles.length - 1].timestamp - candles[0].timestamp) / (1000 * 60 * 60)
@@ -257,7 +257,7 @@ export class TradingAPI {
         historical
       })
     } else {
-      console.warn(`⚠️ API: No candles received for ${symbol}/${interval}`)
+      console.warn(`API: No candles received for ${symbol}/${interval}`)
     }
 
     return candles
@@ -397,14 +397,14 @@ export class TradingAPI {
           volume: candle.v,
         }))
         
-        // 🔍 ESSENTIAL MULTI-DATA VERIFICATION
+        // ESSENTIAL MULTI-DATA VERIFICATION
         const intervalCandles = result.candles[interval]
         if (intervalCandles.length > 0) {
           const now = Date.now()
           const timeSpan = (intervalCandles[intervalCandles.length - 1].timestamp - intervalCandles[0].timestamp) / (1000 * 60 * 60)
           const historical = intervalCandles.filter(c => now - c.timestamp >= 6 * 60 * 60 * 1000).length
           
-          console.log(`📊 Multi ${interval}:`, {
+          console.log(`Multi ${interval}:`, {
             received: intervalCandles.length,
             timeSpan: `${timeSpan.toFixed(1)}h`,
             historical
@@ -528,7 +528,7 @@ export class TradingAPI {
       volume: candle.v,
     }))
 
-    console.log(`🔄 Fresh data: ${candles.length} candles for ${symbol}/${interval}`)
+    console.log(`Fresh data: ${candles.length} candles for ${symbol}/${interval}`)
     return candles
   }
 }

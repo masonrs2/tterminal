@@ -35,7 +35,7 @@ type ClientMessage struct {
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("❌ WebSocket upgrade failed: %v", err)
+		log.Printf("WebSocket upgrade failed: %v", err)
 		return
 	}
 
@@ -76,7 +76,7 @@ func (c *Client) readPump() {
 		_, messageBytes, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("❌ WebSocket error for client %s: %v", c.id, err)
+				log.Printf("WebSocket error for client %s: %v", c.id, err)
 			}
 			break
 		}
@@ -84,7 +84,7 @@ func (c *Client) readPump() {
 		// Parse client message
 		var message ClientMessage
 		if err := json.Unmarshal(messageBytes, &message); err != nil {
-			log.Printf("❌ Invalid message from client %s: %v", c.id, err)
+			log.Printf("Invalid message from client %s: %v", c.id, err)
 			continue
 		}
 
@@ -186,7 +186,7 @@ func (c *Client) handleMessage(message ClientMessage) {
 		c.sendMessage(response)
 
 	default:
-		log.Printf("⚠️ Unknown message type from client %s: %s", c.id, message.Type)
+		log.Printf("Unknown message type from client %s: %s", c.id, message.Type)
 	}
 }
 
@@ -194,7 +194,7 @@ func (c *Client) handleMessage(message ClientMessage) {
 func (c *Client) sendMessage(data interface{}) {
 	message, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("❌ Error marshaling message for client %s: %v", c.id, err)
+		log.Printf("Error marshaling message for client %s: %v", c.id, err)
 		return
 	}
 

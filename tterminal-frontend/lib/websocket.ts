@@ -299,9 +299,9 @@ class TradingWebSocketService {
         const lastBrace = data.lastIndexOf('}')
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
           const extractedJson = data.substring(firstBrace, lastBrace + 1)
-          console.log('🔧 Attempting to parse extracted JSON:', extractedJson)
+          console.log('Attempting to parse extracted JSON:', extractedJson)
           const partialMessage = JSON.parse(extractedJson)
-          console.log('✅ Successfully parsed partial message:', partialMessage)
+          console.log('Successfully parsed partial message:', partialMessage)
         }
       } catch (extractError) {
         console.error('Could not extract valid JSON from message')

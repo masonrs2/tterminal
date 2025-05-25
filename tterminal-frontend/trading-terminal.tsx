@@ -954,8 +954,8 @@ export default function TradingTerminal() {
       <TopNavigation />
 
       {/* Real-time Data Status Indicator with WebSocket Status */}
-      <div className="flex items-center justify-between px-4 py-1 bg-[#0a0a0a] border-b border-gray-800 text-xs font-mono">
-        <div className="flex items-center space-x-4">
+      <div className="flex items-center justify-between px-2 py-0.5 bg-[#0a0a0a] border-b border-gray-800 text-[10px] font-mono">
+        <div className="flex items-center space-x-2">
           {/* WebSocket Status */}
           <WebSocketStatus 
             symbol={selectedSymbol} 
@@ -964,8 +964,8 @@ export default function TradingTerminal() {
           />
 
           {/* API Status */}
-          <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${tradingData.error ? 'bg-red-500' : tradingData.isLoading ? 'bg-yellow-500' : 'bg-green-500'}`} />
+          <div className="flex items-center space-x-1">
+            <div className={`w-1.5 h-1.5 rounded-full ${tradingData.error ? 'bg-red-500' : tradingData.isLoading ? 'bg-yellow-500' : 'bg-green-500'}`} />
             <span className="text-gray-400 font-mono">
               {tradingData.error ? 'API Error' : tradingData.isLoading ? 'Loading...' : 'HTTP OK'}
             </span>
@@ -983,7 +983,7 @@ export default function TradingTerminal() {
                 Current: ${state.currentPrice.toFixed(2)}
               </span>
               {/* Show data source indicator */}
-              <span className={`text-xs ${websocketPrice.isConnected ? 'text-green-400' : 'text-yellow-400'}`}>
+              <span className={`text-[9px] ${websocketPrice.isConnected ? 'text-green-400' : 'text-yellow-400'}`}>
                 ({websocketPrice.isConnected ? 'WS' : 'HTTP'})
               </span>
               <span className="text-gray-500 font-mono">•</span>
@@ -1013,11 +1013,11 @@ export default function TradingTerminal() {
         </div>
 
         {/* Controls */}
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1">
           {tradingData.error && (
             <button
               onClick={tradingData.refreshAllData}
-              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs font-mono transition-colors"
+              className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 rounded text-[9px] font-mono transition-colors"
             >
               Retry
             </button>
@@ -1025,13 +1025,13 @@ export default function TradingTerminal() {
           <button
             onClick={tradingData.refreshAllData}
             disabled={tradingData.isLoading}
-            className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs font-mono transition-colors disabled:opacity-50"
+            className="px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[9px] font-mono transition-colors disabled:opacity-50"
           >
             Refresh
           </button>
           <button
             onClick={tradingData.clearCache}
-            className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs font-mono transition-colors"
+            className="px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[9px] font-mono transition-colors"
           >
             Clear Cache
           </button>
@@ -1052,7 +1052,7 @@ export default function TradingTerminal() {
                   alert(`Backend test failed: ${error}`)
                 }
               }}
-              className="px-2 py-1 bg-purple-600 hover:bg-purple-700 rounded text-xs font-mono transition-colors"
+              className="px-1.5 py-0.5 bg-purple-600 hover:bg-purple-700 rounded text-[9px] font-mono transition-colors"
             >
               Test Backend
             </button>

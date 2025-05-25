@@ -349,18 +349,18 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
 
       const backendCandles = multiData.candles[opts.interval] || []
       
-      // 🔍 ESSENTIAL HISTORICAL DATA VERIFICATION
+      // ESSENTIAL HISTORICAL DATA VERIFICATION
       if (backendCandles.length > 0) {
         const now = Date.now()
         const oldestAge = (now - backendCandles[0].timestamp) / (1000 * 60 * 60) // hours
         const newestAge = (now - backendCandles[backendCandles.length - 1].timestamp) / (1000 * 60) // minutes
         const timeSpan = (backendCandles[backendCandles.length - 1].timestamp - backendCandles[0].timestamp) / (1000 * 60 * 60) // hours
         
-        // 🔍 DEBUG: Check actual timestamps and OHLC values
+        // DEBUG: Check actual timestamps and OHLC values
         const firstCandle = backendCandles[0]
         const lastCandle = backendCandles[backendCandles.length - 1]
         
-        console.log(`📊 Historical Data Summary ${opts.symbol}/${opts.interval}:`, {
+        console.log(`Historical Data Summary ${opts.symbol}/${opts.interval}:`, {
           total: backendCandles.length,
           requested: limit,
           timeSpan: `${timeSpan.toFixed(1)}h`,
@@ -370,20 +370,20 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
           recent: backendCandles.filter(c => now - c.timestamp < 60 * 60 * 1000).length
         })
         
-        // 🔍 DEBUG: Show actual first and last candle details
-        console.log(`🔍 First candle:`, {
+        // DEBUG: Show actual first and last candle details
+        console.log(`First candle:`, {
           timestamp: firstCandle.timestamp,
           date: new Date(firstCandle.timestamp).toISOString(),
           ohlc: `O:${firstCandle.open} H:${firstCandle.high} L:${firstCandle.low} C:${firstCandle.close}`
         })
         
-        console.log(`🔍 Last candle:`, {
+        console.log(`Last candle:`, {
           timestamp: lastCandle.timestamp,
           date: new Date(lastCandle.timestamp).toISOString(),
           ohlc: `O:${lastCandle.open} H:${lastCandle.high} L:${lastCandle.low} C:${lastCandle.close}`
         })
         
-        // 🔍 DEBUG: Check if data is in wrong order
+        // DEBUG: Check if data is in wrong order
         if (firstCandle.timestamp > lastCandle.timestamp) {
           console.error(`DATA ORDER ERROR: First candle is newer than last candle!`)
           console.log(`Sorting candles by timestamp...`)
@@ -392,7 +392,7 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
           backendCandles.sort((a, b) => a.timestamp - b.timestamp)
         }
       } else {
-        console.warn(`⚠️ No historical data received for ${opts.symbol}/${opts.interval}`)
+        console.warn(`No historical data received for ${opts.symbol}/${opts.interval}`)
       }
       
       // MERGE localStorage candles with backend candles
@@ -482,7 +482,7 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
         return prev
       })
     } catch (error) {
-      console.warn('⚠️ HTTP fallback update failed:', error)
+      console.warn('HTTP fallback update failed:', error)
     }
   }, [websocketPrice.isConnected])
 
@@ -538,7 +538,7 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
         }
       })
 
-      console.log(`🔄 Data refreshed for ${opts.symbol}`)
+      console.log(`Data refreshed for ${opts.symbol}`)
     } catch (error) {
       console.error('Failed to refresh trading data:', error)
       setState(prev => ({
@@ -574,7 +574,7 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
         lastUpdateTime: Date.now(),
       }))
 
-      console.log(`📊 Loaded ${newInterval}: ${candles.length} candles`)
+      console.log(`Loaded ${newInterval}: ${candles.length} candles`)
     } catch (error) {
       console.error(`Failed to load interval ${newInterval}:`, error)
       setState(prev => ({
@@ -683,7 +683,7 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
         lastUpdateTime: Date.now(),
       }))
 
-      console.log(`🔄 Force refreshed ${interval} - ${candles.length} candles loaded`)
+      console.log(`Force refreshed ${interval} - ${candles.length} candles loaded`)
     } catch (error) {
       console.error(`Failed to force refresh ${interval}:`, error)
       setState(prev => ({
@@ -726,7 +726,7 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
               const dataGap = lastBackendCandle.timestamp - lastLocalCandle.timestamp
               
               if (dataGap > maxAllowedGap) {
-                console.warn(`⚠️ Large data gap detected - triggering force refresh`)
+                console.warn(`Large data gap detected - triggering force refresh`)
                 
                 // Trigger force refresh in next tick to avoid state conflicts
                 setTimeout(() => {
@@ -767,7 +767,7 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
         })
         
       } catch (error) {
-        console.warn(`⚠️ Periodic sync failed:`, error)
+        console.warn(`Periodic sync failed:`, error)
       }
     }, 60000) // Sync every 60 seconds
 
@@ -779,7 +779,7 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
     if (state.candles.length > 0) {
       // This could trigger a viewport update to show latest candles
       // Implementation depends on your chart component's scroll logic
-      console.log(`📊 Chart now has ${state.candles.length} candles`)
+      console.log(`Chart now has ${state.candles.length} candles`)
     }
   }, [state.candles.length])
 

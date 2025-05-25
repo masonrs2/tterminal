@@ -57,6 +57,12 @@ export const useChartInteractions = ({
   const candleDataRef = useRef(candleData)
   candleDataRef.current = candleData
 
+  // Store the original focal point to prevent drift
+  const originalFocalPointRef = useRef<{ normalizedTime: number; normalizedPrice: number } | null>(null)
+  const lastMousePositionRef = useRef<{ x: number; y: number } | null>(null)
+  const lastZoomTimeRef = useRef<number>(0)
+  const isZoomingRef = useRef<boolean>(false)
+
   /**
    * Calculate current candle height in pixels for smart zoom threshold detection
    */
@@ -79,11 +85,22 @@ export const useChartInteractions = ({
   }, [viewportState.priceZoom])
 
   /**
-   * Smart zoom system: 
-   * AUTO mode: Zoom horizontally into the candle where vertical crosshair is
-   * MANUAL mode: Full 360 zoom into crosshair intersection (both vertical and horizontal)
+   * LASER-PRECISE ZOOM SYSTEM with perfect focal point preservation
+   * Uses normalized coordinates (0-1) to eliminate floating point drift
    */
   const handleSmartZoom = useCallback((e: WheelEvent, canvas: HTMLCanvasElement, x: number, y: number) => {
+    // Prevent infinite loops with debouncing
+    if (isZoomingRef.current) {
+      return
+    }
+    
+    isZoomingRef.current = true
+    
+    // Reset after a short delay
+    setTimeout(() => {
+      isZoomingRef.current = false
+    }, 16) // ~60fps
+    
     // Ultra-snappy sensitivity for both modes
     const horizontalSensitivity = Math.abs(e.deltaY) / 25 // Snappy horizontal zoom
     const regularSensitivity = Math.abs(e.deltaY) / 34 // Regular sensitivity for 360 zoom
@@ -114,35 +131,87 @@ export const useChartInteractions = ({
         }
       })
     } else {
-      // MANUAL MODE: Full 360 zoom into exact crosshair intersection
-      // Use both X and Y position for focal point
-      const zoomFactor = e.deltaY > 0 
-        ? Math.max(0.4, 1 - regularSensitivity * 0.4)  // Zoom out
-        : Math.min(2.5, 1 + regularSensitivity * 0.5)  // Zoom in
+      // MANUAL MODE: Perfect magnifying glass zoom with zero drift
+      const zoomDirection = e.deltaY > 0 ? 'out' : 'in'
+      const zoomSensitivity = Math.abs(e.deltaY) / 34
       
       setViewportState(prev => {
-        // Calculate the new zoom levels for both axes
-        const newTimeZoom = Math.max(0.01, Math.min(100, prev.timeZoom * zoomFactor))
+        // Calculate chart dimensions
+        const spacing = 12
+        const chartHeight = canvas.offsetHeight - 100
+        const chartWidth = canvas.offsetWidth - 100
+        
+        // Safety check to prevent infinite loops
+        if (candleDataRef.current.length === 0) {
+          return prev
+        }
+        
+        // CRITICAL: Use a single, consistent price range calculation for both focal point and zoom
+        // This MUST match the mouse position calculation exactly
+        const calculatePriceRange = (zoom: number) => {
+          const prices = candleDataRef.current.map(c => [c.low, c.high]).flat()
+          if (prices.length === 0) return null
+          
+          // Use the EXACT same calculation as mouse position (no padding!)
+          const priceMax = Math.max(...candleDataRef.current.map(c => c.high))
+          const priceMin = Math.min(...candleDataRef.current.map(c => c.low))
+          const priceRange = (priceMax - priceMin) / zoom
+          
+          return { priceMax, priceMin, priceRange }
+        }
+        
+        // Reset focal point if mouse moved significantly (>5 pixels) or first zoom
+        const mouseMovedSignificantly = !lastMousePositionRef.current || 
+          Math.abs(x - lastMousePositionRef.current.x) > 5 || 
+          Math.abs(y - lastMousePositionRef.current.y) > 5
+
+        if (!originalFocalPointRef.current || mouseMovedSignificantly) {
+          // Calculate the actual chart values that the mouse is pointing to
+          const candleIndex = (x - 50 + prev.timeOffset) / (spacing * prev.timeZoom)
+          
+          // Use consistent price range calculation
+          const priceInfo = calculatePriceRange(prev.priceZoom)
+          if (!priceInfo) {
+            return prev
+          }
+          
+          const { priceMax, priceRange } = priceInfo
+          
+          // Calculate the actual price at the mouse position
+          const actualPrice = priceMax - ((y - 50 + prev.priceOffset) / chartHeight) * priceRange
+          
+          // Store focal point as actual chart values
+          originalFocalPointRef.current = {
+            normalizedTime: candleIndex,
+            normalizedPrice: actualPrice
+          }
+          lastMousePositionRef.current = { x, y }
+        }
+        
+        // Simple zoom factors
+        const zoomFactor = zoomDirection === 'in' 
+          ? Math.min(2.5, 1 + zoomSensitivity * 0.6)  // Zoom in
+          : Math.max(0.4, 1 - zoomSensitivity * 0.4)  // Zoom out
+        
+        // Apply zoom to both axes
+        const newTimeZoom = Math.max(0.01, Math.min(50, prev.timeZoom * zoomFactor))
         const newPriceZoom = Math.max(0.01, Math.min(100, prev.priceZoom * zoomFactor))
         
-        // Calculate focal point in chart coordinates using exact crosshair position
-        const chartHeight = canvas.offsetHeight - 100
-        const spacing = 12 // Base spacing
+        // Use the SAME consistent price range calculation for new zoom
+        const newPriceInfo = calculatePriceRange(newPriceZoom)
+        if (!newPriceInfo) {
+          return prev
+        }
         
-        // Time focal point (horizontal) - where vertical crosshair line is
-        const timePositionInChart = x - 50 + prev.timeOffset
-        const timeFocalPoint = timePositionInChart / (spacing * prev.timeZoom)
+        const { priceMax: newPriceMax, priceRange: newPriceRange } = newPriceInfo
         
-        // Price focal point (vertical) - where horizontal crosshair line is
-        const pricePositionInChart = y - 50 + prev.priceOffset
-        const priceFocalPoint = pricePositionInChart / (chartHeight * prev.priceZoom)
+        // Convert focal point back to screen position with new zoom
+        const targetTimePosition = originalFocalPointRef.current.normalizedTime * spacing * newTimeZoom
+        const targetPricePosition = ((newPriceMax - originalFocalPointRef.current.normalizedPrice) / newPriceRange) * chartHeight
         
-        // Calculate new offsets to maintain focal point at exact crosshair intersection
-        const newTimePosition = timeFocalPoint * spacing * newTimeZoom
-        const newTimeOffset = newTimePosition - (x - 50)
-        
-        const newPricePosition = priceFocalPoint * chartHeight * newPriceZoom
-        const newPriceOffset = newPricePosition - (y - 50)
+        // Calculate exact offsets to keep focal point locked to crosshair position
+        const newTimeOffset = targetTimePosition - (x - 50)
+        const newPriceOffset = targetPricePosition - (y - 50)
         
         return {
           ...prev,
@@ -298,6 +367,13 @@ export const useChartInteractions = ({
 
       // Calculate price at mouse position with dynamic range
       const chartHeight = canvas.offsetHeight - 100
+      
+      // Safety check to prevent infinite loops
+      if (candleDataRef.current.length === 0) {
+        setMousePosition({ x, y, price: 0 })
+        return
+      }
+      
       const priceMax = Math.max(...candleDataRef.current.map(c => c.high))
       const priceMin = Math.min(...candleDataRef.current.map(c => c.low))
       const priceRange = (priceMax - priceMin) / viewportState.priceZoom
@@ -530,12 +606,25 @@ export const useChartInteractions = ({
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
     
+    // Prevent rapid-fire wheel events
+    const now = Date.now()
+    if (now - lastZoomTimeRef.current < 16) { // Limit to ~60fps
+      return
+    }
+    lastZoomTimeRef.current = now
+    
     const canvas = canvasRef.current
     if (!canvas) return
 
     const rect = canvas.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
+    
+    // Reset focal point when starting a new zoom sequence (after a pause)
+    // This ensures each zoom sequence starts fresh without accumulated drift
+    if (!lastZoomTimeRef.current || now - lastZoomTimeRef.current > 100) {
+      originalFocalPointRef.current = null
+    }
     
     // Detect which axis we're hovering over
     const axisZone = getAxisZone(x, y, canvas)

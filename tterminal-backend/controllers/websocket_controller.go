@@ -2,6 +2,9 @@ package controllers
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"tterminal-backend/internal/websocket"
 
@@ -46,40 +49,205 @@ func (wsc *WebSocketController) HandleWebSocket(c echo.Context) error {
 
 // GetWebSocketStats returns WebSocket connection statistics
 func (wsc *WebSocketController) GetWebSocketStats(c echo.Context) error {
+	// Get enhanced stream statistics
+	streamStats := wsc.binanceStream.GetStreamStats()
+
 	stats := map[string]interface{}{
 		"connected_clients": wsc.hub.GetConnectedClients(),
 		"subscriptions":     wsc.hub.GetSubscriptionStats(),
-		"binance_symbols":   wsc.binanceStream.GetConnectedSymbols(),
+		"binance_stream":    streamStats,
 		"service":           "websocket",
 		"status":            "active",
+		"data_types": []string{
+			"price_updates",       // Real-time price changes (Spot + Futures)
+			"depth_updates",       // Order book depth
+			"trade_updates",       // Individual trades
+			"kline_updates",       // Real-time candles
+			"mark_price_updates",  // Futures mark prices
+			"liquidation_updates", // Futures liquidations
+		},
+		"endpoints": map[string]string{
+			"websocket":    "/api/v1/websocket/connect",
+			"price":        "/api/v1/websocket/price/{symbol}",
+			"depth":        "/api/v1/websocket/depth/{symbol}",
+			"trades":       "/api/v1/websocket/trades/{symbol}",
+			"klines":       "/api/v1/websocket/kline/{symbol}/{interval}",
+			"mark_price":   "/api/v1/websocket/markprice/{symbol}",
+			"liquidations": "/api/v1/websocket/liquidations/{symbol}",
+		},
 	}
 
-	return c.JSON(http.StatusOK, stats)
+	return c.JSON(200, stats)
 }
 
-// GetLastPrice returns the last known price for a symbol from WebSocket stream
+// GetLastPrice returns the last known price for a symbol
 func (wsc *WebSocketController) GetLastPrice(c echo.Context) error {
-	symbol := c.Param("symbol")
+	symbol := strings.ToUpper(c.Param("symbol"))
 	if symbol == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Symbol parameter is required",
-		})
+		return c.JSON(400, map[string]string{"error": "Symbol parameter is required"})
 	}
 
 	price, exists := wsc.binanceStream.GetLastPrice(symbol)
 	if !exists {
-		return c.JSON(http.StatusNotFound, map[string]string{
-			"error": "Price not available for symbol: " + symbol,
-		})
+		return c.JSON(404, map[string]string{"error": "Price data not found for symbol"})
 	}
 
 	response := map[string]interface{}{
-		"symbol": symbol,
-		"price":  price,
-		"source": "websocket",
+		"symbol":    symbol,
+		"price":     price,
+		"timestamp": time.Now().UnixMilli(),
+		"source":    "websocket_cache",
 	}
 
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(200, response)
+}
+
+// GetDepthData returns the latest order book depth data for a symbol
+func (wsc *WebSocketController) GetDepthData(c echo.Context) error {
+	symbol := strings.ToUpper(c.Param("symbol"))
+	if symbol == "" {
+		return c.JSON(400, map[string]string{"error": "Symbol parameter is required"})
+	}
+
+	depth, exists := wsc.binanceStream.GetDepthData(symbol)
+	if !exists {
+		return c.JSON(404, map[string]string{"error": "Depth data not found for symbol"})
+	}
+
+	response := map[string]interface{}{
+		"symbol":          symbol,
+		"bids":            depth.Bids,
+		"asks":            depth.Asks,
+		"first_update_id": depth.FirstUpdateID,
+		"final_update_id": depth.FinalUpdateID,
+		"event_time":      depth.EventTime,
+		"timestamp":       time.Now().UnixMilli(),
+		"source":          "websocket_cache",
+	}
+
+	return c.JSON(200, response)
+}
+
+// GetRecentTrades returns recent trades for a symbol
+func (wsc *WebSocketController) GetRecentTrades(c echo.Context) error {
+	symbol := strings.ToUpper(c.Param("symbol"))
+	if symbol == "" {
+		return c.JSON(400, map[string]string{"error": "Symbol parameter is required"})
+	}
+
+	// Parse limit parameter
+	limitStr := c.QueryParam("limit")
+	limit := 100 // Default limit
+	if limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	trades := wsc.binanceStream.GetRecentTrades(symbol, limit)
+	if trades == nil {
+		return c.JSON(404, map[string]string{"error": "Trade data not found for symbol"})
+	}
+
+	response := map[string]interface{}{
+		"symbol":    symbol,
+		"trades":    trades,
+		"count":     len(trades),
+		"limit":     limit,
+		"timestamp": time.Now().UnixMilli(),
+		"source":    "websocket_cache",
+	}
+
+	return c.JSON(200, response)
+}
+
+// GetKlineData returns the latest kline data for a symbol and interval
+func (wsc *WebSocketController) GetKlineData(c echo.Context) error {
+	symbol := strings.ToUpper(c.Param("symbol"))
+	interval := c.Param("interval")
+
+	if symbol == "" {
+		return c.JSON(400, map[string]string{"error": "Symbol parameter is required"})
+	}
+	if interval == "" {
+		return c.JSON(400, map[string]string{"error": "Interval parameter is required"})
+	}
+
+	kline, exists := wsc.binanceStream.GetKlineData(symbol, interval)
+	if !exists {
+		return c.JSON(404, map[string]string{"error": "Kline data not found for symbol and interval"})
+	}
+
+	response := map[string]interface{}{
+		"symbol":     symbol,
+		"interval":   interval,
+		"kline":      kline.Kline,
+		"event_time": kline.EventTime,
+		"timestamp":  time.Now().UnixMilli(),
+		"source":     "websocket_cache",
+	}
+
+	return c.JSON(200, response)
+}
+
+// GetMarkPriceData returns the latest Futures mark price data for a symbol
+func (wsc *WebSocketController) GetMarkPriceData(c echo.Context) error {
+	symbol := strings.ToUpper(c.Param("symbol"))
+	if symbol == "" {
+		return c.JSON(400, map[string]string{"error": "Symbol parameter is required"})
+	}
+
+	markPrice, exists := wsc.binanceStream.GetMarkPriceData(symbol)
+	if !exists {
+		return c.JSON(404, map[string]string{"error": "Mark price data not found for symbol"})
+	}
+
+	response := map[string]interface{}{
+		"symbol":            symbol,
+		"mark_price":        markPrice.MarkPrice,
+		"index_price":       markPrice.IndexPrice,
+		"estimated_price":   markPrice.EstimatedPrice,
+		"funding_rate":      markPrice.FundingRate,
+		"next_funding_time": markPrice.NextFundingTime,
+		"event_time":        markPrice.EventTime,
+		"timestamp":         time.Now().UnixMilli(),
+		"source":            "websocket_cache",
+	}
+
+	return c.JSON(200, response)
+}
+
+// GetRecentLiquidations returns recent Futures liquidations for a symbol
+func (wsc *WebSocketController) GetRecentLiquidations(c echo.Context) error {
+	symbol := strings.ToUpper(c.Param("symbol"))
+	if symbol == "" {
+		return c.JSON(400, map[string]string{"error": "Symbol parameter is required"})
+	}
+
+	// Parse limit parameter
+	limitStr := c.QueryParam("limit")
+	limit := 100 // Default limit
+	if limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	liquidations := wsc.binanceStream.GetRecentLiquidations(symbol, limit)
+	if liquidations == nil {
+		return c.JSON(404, map[string]string{"error": "Liquidation data not found for symbol"})
+	}
+
+	response := map[string]interface{}{
+		"symbol":       symbol,
+		"liquidations": liquidations,
+		"count":        len(liquidations),
+		"limit":        limit,
+		"timestamp":    time.Now().UnixMilli(),
+		"source":       "websocket_cache",
+	}
+
+	return c.JSON(200, response)
 }
 
 // AddSymbolToStream adds a new symbol to the Binance stream

@@ -118,8 +118,17 @@ func SetupRoutes(e *echo.Echo, db *database.DB, cfg *config.Config) {
 	// Real-time price endpoints (fallback for when WebSocket isn't available)
 	ws.GET("/price/:symbol", websocketController.GetLastPrice)
 
-	// Dynamic symbol management
-	ws.POST("/symbols/:symbol", websocketController.AddSymbolToStream)
+	// Enhanced Binance WebSocket data endpoints - maximizing data streams
+	ws.GET("/depth/:symbol", websocketController.GetDepthData)           // Order book depth
+	ws.GET("/trades/:symbol", websocketController.GetRecentTrades)       // Recent trades
+	ws.GET("/kline/:symbol/:interval", websocketController.GetKlineData) // Kline data
+
+	// NEW: Futures-specific endpoints for derivatives trading
+	ws.GET("/markprice/:symbol", websocketController.GetMarkPriceData)         // Futures mark price
+	ws.GET("/liquidations/:symbol", websocketController.GetRecentLiquidations) // Futures liquidations
+
+	// Symbol management endpoints
+	ws.POST("/symbols/:symbol", websocketController.AddSymbolToStream) // Add symbol to stream
 
 	// Legacy WebSocket routes for backward compatibility
 	legacyWs := v1.Group("/ws")

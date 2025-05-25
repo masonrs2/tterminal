@@ -46,9 +46,9 @@ export const WebSocketStatus: React.FC<WebSocketStatusProps> = ({
   }
 
   const getStatusIcon = () => {
-    if (!isConnected) return '📴'
-    if (websocketPrice.isStale) return '⚠️'
-    return '🟢'
+    if (!isConnected) return 'OFF'
+    if (websocketPrice.isStale) return '!'
+    return 'ON'
   }
 
   const timeSinceUpdate = websocketPrice.lastUpdate > 0 
@@ -56,22 +56,22 @@ export const WebSocketStatus: React.FC<WebSocketStatusProps> = ({
     : 0
 
   return (
-    <div className={`flex items-center space-x-2 ${className}`}>
+    <div className={`flex items-center space-x-1 ${className}`}>
       {/* Connection Status Indicator */}
-      <div className="flex items-center space-x-1">
-        <span className="text-sm">{getStatusIcon()}</span>
-        <span className={`text-xs font-medium ${getStatusColor()}`}>
+      <div className="flex items-center space-x-0.5">
+        <span className="text-xs">{getStatusIcon()}</span>
+        <span className={`text-[10px] font-medium ${getStatusColor()}`}>
           {getStatusText()}
         </span>
       </div>
 
       {/* Detailed Information */}
       {showDetails && isConnected && (
-        <div className="flex items-center space-x-2 text-xs text-gray-400">
+        <div className="flex items-center space-x-1 text-[10px] text-gray-400">
           {/* Current Price */}
           {websocketPrice.price !== null && (
-            <div className="flex items-center space-x-1">
-              <span>💰</span>
+            <div className="flex items-center space-x-0.5">
+              <span className="text-xs">$</span>
               <span>${websocketPrice.formattedPrice}</span>
               {websocketPrice.formattedChangePercent && (
                 <span className={websocketPrice.isPriceUp ? 'text-green-400' : 'text-red-400'}>
@@ -83,8 +83,8 @@ export const WebSocketStatus: React.FC<WebSocketStatusProps> = ({
 
           {/* Update Timing */}
           {websocketPrice.lastUpdate > 0 && (
-            <div className="flex items-center space-x-1">
-              <span>⏱️</span>
+            <div className="flex items-center space-x-0.5">
+              <span className="text-xs">T:</span>
               <span>
                 {timeSinceUpdate < 1000 
                   ? 'Just now' 
@@ -95,8 +95,8 @@ export const WebSocketStatus: React.FC<WebSocketStatusProps> = ({
 
           {/* Connection Count */}
           {connectionCount > 1 && (
-            <div className="flex items-center space-x-1">
-              <span>🔄</span>
+            <div className="flex items-center space-x-0.5">
+              <span className="text-xs">R:</span>
               <span>{connectionCount} reconnects</span>
             </div>
           )}
@@ -105,8 +105,8 @@ export const WebSocketStatus: React.FC<WebSocketStatusProps> = ({
 
       {/* Fallback to HTTP indicator */}
       {!isConnected && (
-        <div className="text-xs text-yellow-400">
-          📡 HTTP fallback
+        <div className="text-[10px] text-yellow-400">
+          HTTP fallback
         </div>
       )}
     </div>

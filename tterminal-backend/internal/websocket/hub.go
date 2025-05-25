@@ -86,7 +86,7 @@ func NewHub() *Hub {
 
 // Run starts the hub and handles client management
 func (h *Hub) Run() {
-	log.Println("🚀 WebSocket Hub started - Ready for ultra-fast trading connections")
+	log.Println("WebSocket Hub started - Ready for ultra-fast trading connections")
 
 	for {
 		select {
@@ -145,28 +145,185 @@ func (h *Hub) BroadcastPriceUpdate(update PriceUpdate) {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
 
-	// Get clients subscribed to this symbol
-	if clients, exists := h.subscriptions[update.Symbol]; exists {
-		message, err := json.Marshal(update)
-		if err != nil {
-			log.Printf("❌ Error marshaling price update: %v", err)
-			return
-		}
+	// Convert to JSON
+	message, err := json.Marshal(update)
+	if err != nil {
+		log.Printf("❌ Error marshaling price update: %v", err)
+		return
+	}
 
-		// Send to all subscribed clients
+	// Send to clients subscribed to this symbol
+	if clients, exists := h.subscriptions[update.Symbol]; exists {
 		for client := range clients {
 			select {
 			case client.send <- message:
 			default:
-				// Client channel is full, remove it
+				// Client buffer full, remove client
 				close(client.send)
 				delete(h.clients, client)
 				delete(clients, client)
 			}
 		}
+	}
+}
 
-		log.Printf("📊 Price update broadcast: %s = $%.2f to %d clients",
-			update.Symbol, update.Price, len(clients))
+// BroadcastDepthUpdate sends order book depth update to all subscribed clients
+func (h *Hub) BroadcastDepthUpdate(update map[string]interface{}) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	// Convert to JSON
+	message, err := json.Marshal(update)
+	if err != nil {
+		log.Printf("❌ Error marshaling depth update: %v", err)
+		return
+	}
+
+	// Send to clients subscribed to this symbol
+	symbol, ok := update["symbol"].(string)
+	if !ok {
+		return
+	}
+
+	if clients, exists := h.subscriptions[symbol]; exists {
+		for client := range clients {
+			select {
+			case client.send <- message:
+			default:
+				// Client buffer full, remove client
+				close(client.send)
+				delete(h.clients, client)
+				delete(clients, client)
+			}
+		}
+	}
+}
+
+// BroadcastTradeUpdate sends individual trade update to all subscribed clients
+func (h *Hub) BroadcastTradeUpdate(update map[string]interface{}) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	// Convert to JSON
+	message, err := json.Marshal(update)
+	if err != nil {
+		log.Printf("❌ Error marshaling trade update: %v", err)
+		return
+	}
+
+	// Send to clients subscribed to this symbol
+	symbol, ok := update["symbol"].(string)
+	if !ok {
+		return
+	}
+
+	if clients, exists := h.subscriptions[symbol]; exists {
+		for client := range clients {
+			select {
+			case client.send <- message:
+			default:
+				// Client buffer full, remove client
+				close(client.send)
+				delete(h.clients, client)
+				delete(clients, client)
+			}
+		}
+	}
+}
+
+// BroadcastKlineUpdate sends kline/candlestick update to all subscribed clients
+func (h *Hub) BroadcastKlineUpdate(update map[string]interface{}) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	// Convert to JSON
+	message, err := json.Marshal(update)
+	if err != nil {
+		log.Printf("❌ Error marshaling kline update: %v", err)
+		return
+	}
+
+	// Send to clients subscribed to this symbol
+	symbol, ok := update["symbol"].(string)
+	if !ok {
+		return
+	}
+
+	if clients, exists := h.subscriptions[symbol]; exists {
+		for client := range clients {
+			select {
+			case client.send <- message:
+			default:
+				// Client buffer full, remove client
+				close(client.send)
+				delete(h.clients, client)
+				delete(clients, client)
+			}
+		}
+	}
+}
+
+// BroadcastMarkPriceUpdate sends Futures mark price update to all subscribed clients
+func (h *Hub) BroadcastMarkPriceUpdate(update map[string]interface{}) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	// Convert to JSON
+	message, err := json.Marshal(update)
+	if err != nil {
+		log.Printf("❌ Error marshaling mark price update: %v", err)
+		return
+	}
+
+	// Send to clients subscribed to this symbol
+	symbol, ok := update["symbol"].(string)
+	if !ok {
+		return
+	}
+
+	if clients, exists := h.subscriptions[symbol]; exists {
+		for client := range clients {
+			select {
+			case client.send <- message:
+			default:
+				// Client buffer full, remove client
+				close(client.send)
+				delete(h.clients, client)
+				delete(clients, client)
+			}
+		}
+	}
+}
+
+// BroadcastLiquidationUpdate sends Futures liquidation update to all subscribed clients
+func (h *Hub) BroadcastLiquidationUpdate(update map[string]interface{}) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	// Convert to JSON
+	message, err := json.Marshal(update)
+	if err != nil {
+		log.Printf("❌ Error marshaling liquidation update: %v", err)
+		return
+	}
+
+	// Send to clients subscribed to this symbol
+	symbol, ok := update["symbol"].(string)
+	if !ok {
+		return
+	}
+
+	if clients, exists := h.subscriptions[symbol]; exists {
+		for client := range clients {
+			select {
+			case client.send <- message:
+			default:
+				// Client buffer full, remove client
+				close(client.send)
+				delete(h.clients, client)
+				delete(clients, client)
+			}
+		}
 	}
 }
 
