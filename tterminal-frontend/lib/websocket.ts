@@ -131,8 +131,16 @@ class TradingWebSocketService {
         this.ws.onopen = () => {
           console.log('WebSocket connected')
           this.isConnected = true
+          this.isConnecting = false
           this.reconnectAttempts = 0
           this.lastPingTime = Date.now()
+          
+          // CRITICAL FIX: Resubscribe to all symbols after reconnection
+          // This ensures real-time updates continue after connection drops
+          this.resubscribeAll()
+          
+          // Notify connection callbacks AFTER resubscription
+          this.connectionCallbacks.forEach(callback => callback(true))
           
           // Send ping immediately after connection
           this.sendPing()
@@ -202,9 +210,14 @@ class TradingWebSocketService {
     }
     this.subscriptions.get(symbol)!.add(callback)
 
-    // Send subscription message if connected
+    console.log(`WebSocket subscription added for ${symbol} (connected: ${this.isConnected}, total callbacks: ${this.subscriptions.get(symbol)!.size})`)
+
+    // Send subscription message if connected and not already subscribed
     if (this.isConnected && !this.subscribedSymbols.has(symbol)) {
       this.sendSubscription(symbol)
+      console.log(`Sent subscription message for ${symbol}`)
+    } else if (!this.isConnected) {
+      console.log(`WebSocket disconnected - ${symbol} subscription will be sent on reconnection`)
     }
 
     // Return unsubscribe function
@@ -212,9 +225,11 @@ class TradingWebSocketService {
       const callbacks = this.subscriptions.get(symbol)
       if (callbacks) {
         callbacks.delete(callback)
+        console.log(`WebSocket subscription removed for ${symbol} (remaining callbacks: ${callbacks.size})`)
         if (callbacks.size === 0) {
           this.subscriptions.delete(symbol)
           this.unsubscribeFromSymbol(symbol)
+          console.log(`All subscriptions removed for ${symbol}`)
         }
       }
     }
@@ -322,12 +337,14 @@ class TradingWebSocketService {
         case 'subscribed':
           if (message.symbol) {
             this.subscribedSymbols.add(message.symbol)
+            console.log(`Subscription confirmed for ${message.symbol}`)
           }
           break
 
         case 'unsubscribed':
           if (message.symbol) {
             this.subscribedSymbols.delete(message.symbol)
+            console.log(`Unsubscription confirmed for ${message.symbol}`)
           }
           break
 
@@ -378,6 +395,11 @@ class TradingWebSocketService {
   private handlePriceUpdate(update: PriceUpdate): void {
     const callbacks = this.subscriptions.get(update.symbol)
     if (callbacks && callbacks.size > 0) {
+      // Log price updates occasionally to avoid spam
+      if (Math.random() < 0.01) { // Log ~1% of price updates
+        console.log(`Price update for ${update.symbol}: $${update.price.toFixed(2)} (${callbacks.size} callbacks)`)
+      }
+      
       callbacks.forEach(callback => {
         try {
           callback(update)
@@ -385,6 +407,9 @@ class TradingWebSocketService {
           console.error('Error in price update callback:', error)
         }
       })
+    } else {
+      // Always log when we receive updates for symbols with no callbacks
+      console.warn(`Received price update for ${update.symbol} but no callbacks registered`)
     }
   }
 
@@ -503,6 +528,9 @@ class TradingWebSocketService {
         symbol: symbol
       }
       this.ws.send(JSON.stringify(message))
+      console.log(`Sent subscription message for ${symbol}`)
+    } else {
+      console.warn(`Cannot send subscription for ${symbol} - WebSocket not connected`)
     }
   }
 
@@ -524,7 +552,20 @@ class TradingWebSocketService {
    * Resubscribe to all symbols after reconnection
    */
   private resubscribeAll(): void {
-    this.subscriptions.forEach((_, symbol) => {
+    const symbolsToResubscribe = Array.from(this.subscriptions.keys())
+    
+    if (symbolsToResubscribe.length === 0) {
+      console.log('No symbols to resubscribe')
+      return
+    }
+
+    console.log(`Resubscribing to ${symbolsToResubscribe.length} symbols: ${symbolsToResubscribe.join(', ')}`)
+    
+    // Clear the subscribed symbols set since we're reconnecting
+    this.subscribedSymbols.clear()
+    
+    // Resubscribe to all symbols
+    symbolsToResubscribe.forEach(symbol => {
       this.sendSubscription(symbol)
     })
   }

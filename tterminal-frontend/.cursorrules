@@ -1,0 +1,9 @@
+# 🚀 MISSION CRITICAL: SPEED & PERFORMANCE
+## We are building the FASTEST trading terminal in the industry
+- **Sub-100ms real-time updates** are our standard - never compromise on speed
+- **WebSocket-first architecture** with intelligent HTTP fallback
+- **Canvas optimization** is paramount - batch operations, avoid unnecessary redraws
+- **Stable viewport calculations** prevent glitching during real-time updates
+- **React performance patterns** are mandatory: memo, useMemo, useCallback
+- **Memory efficiency** - proper cleanup, avoid leaks, optimize large datasets
+- **NO EMOJIS** - Use clear, professional text in all logs, comments, and code 

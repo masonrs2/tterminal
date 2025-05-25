@@ -29,6 +29,8 @@ interface VolumeProfileProps {
   opacity: number
   candleData: CandleData[]
   onPriceClick?: (price: number) => void
+  rangeMode?: 'visible' | 'fixed'
+  fixedCandleCount?: number
 }
 
 export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
@@ -52,6 +54,8 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
   opacity = 0.7,
   candleData,
   onPriceClick,
+  rangeMode,
+  fixedCandleCount,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   
@@ -77,6 +81,8 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
     viewportState,
     chartWidth,
     chartHeight,
+    rangeMode: rangeMode || 'fixed', // Default to fixed mode
+    fixedCandleCount: fixedCandleCount || 1000, // Default to 1000 candles
   })
 
   // PERFORMANCE: Memoize volume profile configuration
@@ -105,25 +111,25 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
     const priceSpan = priceRange.max - priceRange.min
     const pixelsPerPrice = chartHeight / priceSpan
     
-    // Calculate average price gap between consecutive levels
-    let totalPriceGaps = 0
-    let gapCount = 0
-    
+    // IMPROVED: Use minimum spacing between levels to prevent overlap
+    let minPriceGap = Infinity
     for (let i = 1; i < sortedLevels.length; i++) {
       const gap = sortedLevels[i].price - sortedLevels[i-1].price
       if (gap > 0) {
-        totalPriceGaps += gap
-        gapCount++
+        minPriceGap = Math.min(minPriceGap, gap)
       }
     }
     
-    const averagePriceGap = gapCount > 0 ? totalPriceGaps / gapCount : priceSpan / visibleLevels.length
+    // If no gaps found (single level), use a reasonable default
+    if (minPriceGap === Infinity) {
+      minPriceGap = 0.1 // Default to 0.1 price units
+    }
     
-    // Convert average price gap to pixels and ensure reasonable bar height
-    let barHeight = Math.floor(averagePriceGap * pixelsPerPrice * 0.8) // 80% of gap for small spacing
-    barHeight = Math.max(2, Math.min(barHeight, 20)) // Clamp between 2-20 pixels
+    // Convert minimum price gap to pixels and ensure reasonable bar height
+    let barHeight = Math.floor(minPriceGap * pixelsPerPrice * 0.9) // 90% of minimum gap to prevent overlap
+    barHeight = Math.max(4, Math.min(barHeight, 25)) // Clamp between 4-25 pixels for better visibility
     
-    console.log(`📏 Improved bar height: ${barHeight}px for ${visibleLevels.length} levels (avg gap: ${averagePriceGap.toFixed(4)}, density: ${pixelsPerPrice.toFixed(2)} px/price)`)
+    console.log(`📏 Optimized bar height: ${barHeight}px for ${visibleLevels.length} levels (min gap: ${minPriceGap.toFixed(2)}, density: ${pixelsPerPrice.toFixed(2)} px/price)`)
     
     return {
       maxBarWidth,
@@ -131,7 +137,7 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
       barHeight,
       startX: chartWidth - 80, // Start from price axis (80px is price axis width)
       visibleLevels: visibleLevels.length,
-      averagePriceGap,
+      averagePriceGap: minPriceGap,
       pixelsPerPrice
     }
   }, [maxVolumeLevel?.totalVolume, levels, chartWidth, chartHeight, priceRange])
@@ -466,7 +472,7 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
             </div>
           )}
           <div className="text-xs text-gray-400">
-            {timeRange}h • {levels.filter(l => l.price >= priceRange.min && l.price <= priceRange.max).length}/{levels.length}
+            {rangeMode === 'fixed' ? `${fixedCandleCount || 1000}c` : 'visible'} • {levels.filter(l => l.price >= priceRange.min && l.price <= priceRange.max).length}/{levels.length}
           </div>
         </div>
       )}

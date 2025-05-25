@@ -676,6 +676,8 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
           opacity={indicatorSettings.vpvr.opacity}
           candleData={candleData}
           onPriceClick={(price) => console.log('Volume profile price clicked:', price)}
+          rangeMode="fixed" // Default to fixed mode for consistent volume profile
+          fixedCandleCount={1000} // Use last 1000 candles for volume profile calculation
         />
       )}
 

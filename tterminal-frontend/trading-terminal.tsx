@@ -69,10 +69,12 @@ export default function TradingTerminal() {
   useEffect(() => {
     // Use WebSocket price if available and connected
     if (websocketPrice.price !== null && websocketPrice.isConnected) {
+      console.log(`Trading Terminal: Setting price from WebSocket: $${websocketPrice.price.toFixed(2)}`)
       state.setCurrentPrice(websocketPrice.price)
     } 
     // Fallback to HTTP data if WebSocket is not available
     else if (tradingData.currentPrice > 0) {
+      console.log(`Trading Terminal: Setting price from HTTP: $${tradingData.currentPrice.toFixed(2)}`)
       state.setCurrentPrice(tradingData.currentPrice)
     }
   }, [

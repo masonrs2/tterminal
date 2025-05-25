@@ -165,12 +165,15 @@ export const useChartInteractions = ({
           return { priceMax, priceMin, priceRange }
         }
         
-        // Reset focal point if mouse moved significantly (>5 pixels) or first zoom
+        // Reset focal point if mouse moved significantly (>20 pixels), first zoom, or after a pause
+        // FIXED: Increased threshold to prevent focal point reset during normal zoom operations
+        const now = Date.now()
+        const timeSinceLastZoom = now - lastZoomTimeRef.current
         const mouseMovedSignificantly = !lastMousePositionRef.current || 
-          Math.abs(x - lastMousePositionRef.current.x) > 5 || 
-          Math.abs(y - lastMousePositionRef.current.y) > 5
+          Math.abs(x - lastMousePositionRef.current.x) > 20 || 
+          Math.abs(y - lastMousePositionRef.current.y) > 20
 
-        if (!originalFocalPointRef.current || mouseMovedSignificantly) {
+        if (!originalFocalPointRef.current || mouseMovedSignificantly || timeSinceLastZoom > 500) {
           // Calculate the actual chart values that the mouse is pointing to
           const candleIndex = (x - 50 + prev.timeOffset) / (spacing * prev.timeZoom)
           
@@ -288,7 +291,7 @@ export const useChartInteractions = ({
       }
       
       // PERFORMANCE: Calculate price using current viewport state from ref
-      const chartHeight = canvas.height - 100
+      const chartHeight = canvas.offsetHeight - 100 // Use offsetHeight for consistency with zoom calculations
       const priceMax = Math.max(...currentCandles.map(c => c.high))
       const priceMin = Math.min(...currentCandles.map(c => c.low))
       const priceRange = (priceMax - priceMin) / viewportState.priceZoom
@@ -677,7 +680,6 @@ export const useChartInteractions = ({
     if (now - lastZoomTimeRef.current < 16) { // Limit to ~60fps
       return
     }
-    lastZoomTimeRef.current = now
     
     const canvas = canvasRef.current
     if (!canvas) return
@@ -687,10 +689,14 @@ export const useChartInteractions = ({
     const y = e.clientY - rect.top
     
     // Reset focal point when starting a new zoom sequence (after a pause)
-    // This ensures each zoom sequence starts fresh without accumulated drift
-    if (!lastZoomTimeRef.current || now - lastZoomTimeRef.current > 100) {
+    // FIXED: Check time difference before updating lastZoomTimeRef
+    const timeSinceLastZoom = now - lastZoomTimeRef.current
+    if (timeSinceLastZoom > 500) {
       originalFocalPointRef.current = null
     }
+    
+    // Update the zoom time after checking
+    lastZoomTimeRef.current = now
     
     // Detect which axis we're hovering over
     const axisZone = getAxisZone(x, y, canvas)

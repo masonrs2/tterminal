@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"log"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -583,14 +584,20 @@ func (bs *BinanceStream) processPriceUpdate(symbol, lastPriceStr, priceChangeStr
 		return
 	}
 
-	// Enhanced price change detection with smaller threshold for trading
+	// ULTRA-FAST real-time updates: Update on ANY price movement for maximum responsiveness
 	lastKnownPrice, exists := bs.lastPrices[symbol]
-	threshold := 0.01 // Smaller threshold for more sensitive updates
-	if exists && lastPrice != 0 && lastKnownPrice != 0 {
-		changePercent := ((lastPrice - lastKnownPrice) / lastKnownPrice) * 100
-		if changePercent < threshold && changePercent > -threshold {
-			return // Skip micro-movements
+	if exists && lastPrice == lastKnownPrice {
+		return // Only skip if price is exactly the same (no movement at all)
+	}
+
+	// Debug logging for price changes (sample 1% to avoid log spam)
+	if symbol == "BTCUSDT" && (rand.Float64() < 0.01) {
+		absoluteChange := lastPrice - lastKnownPrice
+		if absoluteChange < 0 {
+			absoluteChange = -absoluteChange
 		}
+		log.Printf("BTCUSDT price update: $%.2f -> $%.2f (change: $%.4f)",
+			lastKnownPrice, lastPrice, absoluteChange)
 	}
 
 	// Update last known price
@@ -605,6 +612,11 @@ func (bs *BinanceStream) processPriceUpdate(symbol, lastPriceStr, priceChangeStr
 		ChangePercent: priceChangePercent,
 		Volume:        volume,
 		Timestamp:     time.Now().UnixMilli(),
+	}
+
+	// Debug logging for broadcasts
+	if symbol == "BTCUSDT" {
+		log.Printf("Broadcasting BTCUSDT price update: $%.2f", lastPrice)
 	}
 
 	// Broadcast to all subscribed clients

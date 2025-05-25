@@ -34,11 +34,13 @@ export const useWebSocketPrice = (options: UseWebSocketPriceOptions) => {
     lastUpdate: 0,
   })
 
-  // Track subscription cleanup
+  // Track subscription cleanup and throttling
   const unsubscribeRef = useRef<(() => void) | null>(null)
   const connectionUnsubscribeRef = useRef<(() => void) | null>(null)
+  const lastUpdateTimeRef = useRef<number>(0)
+  const updateThrottleMs = 16 // ~60fps max updates for ultra-smooth performance
 
-  // Handle price updates
+  // Handle price updates with throttling for ultra-smooth performance
   const handlePriceUpdate = useCallback((message: any) => {
     // Only handle price_update messages
     if (message.type !== 'price_update') return
@@ -57,6 +59,18 @@ export const useWebSocketPrice = (options: UseWebSocketPriceOptions) => {
       return
     }
     
+    // PERFORMANCE: Throttle updates to ~60fps for ultra-smooth UI
+    const now = Date.now()
+    if (now - lastUpdateTimeRef.current < updateThrottleMs) {
+      return // Skip this update to maintain smooth performance
+    }
+    lastUpdateTimeRef.current = now
+    
+    // Sample logging to avoid console spam (1% of updates)
+    if (Math.random() < 0.01) {
+      console.log(`WebSocket price update for ${update.symbol}: $${update.price.toFixed(2)}`)
+    }
+    
     setState(prev => ({
       ...prev,
       price: update.price,
@@ -64,7 +78,7 @@ export const useWebSocketPrice = (options: UseWebSocketPriceOptions) => {
       changePercent: update.changePercent,
       volume: update.volume,
       timestamp: update.timestamp,
-      lastUpdate: Date.now(),
+      lastUpdate: now,
     }))
   }, [])
 
