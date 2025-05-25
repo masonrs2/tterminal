@@ -110,6 +110,7 @@ export default function TradingTerminal() {
     dragState: state.dragState,
     measuringSelection: state.measuringSelection,
     isCreatingMeasurement: state.isCreatingMeasurement,
+    navigationMode: state.navigationMode,
     setHoveredCandle: state.setHoveredCandle,
     setMousePosition: state.setMousePosition,
     setDrawingTools: state.setDrawingTools,
@@ -148,43 +149,57 @@ export default function TradingTerminal() {
       
       console.log(`Auto-navigating after timeframe change: ${tradingData.candles.length} candles loaded`)
       
-      // Use the same logic as the "Current" button for reliability
-      const spacing = 12 * 1 // Use default zoom for calculation
+      // Use the same improved logic as the "Current" button for consistency
       const canvasWidth = canvas.offsetWidth
-      const rightMargin = 100 // Keep some margin from the right edge
+      const canvasHeight = canvas.offsetHeight
+      const rightMargin = 80  // Reduced margin for more space
+      const leftMargin = 50   // Left margin for price axis
+      const availableWidth = canvasWidth - rightMargin - leftMargin
       
-      // Calculate how many candles should be visible on screen
-      const idealVisibleCandles = Math.floor((canvasWidth - rightMargin) / spacing)
-      const totalCandles = tradingData.candles.length
+      // CALCULATE OPTIMAL TIME ZOOM (horizontal sizing) - Show around 100 candles
+      const targetCandleCount = Math.min(120, Math.max(80, Math.floor(tradingData.candles.length * 0.8))) // Show 80-120 candles
+      const actualCandlesToShow = Math.min(targetCandleCount, tradingData.candles.length)
       
-      if (totalCandles <= idealVisibleCandles) {
-        // Show all candles if we have fewer than what fits on screen
-        const totalWidth = totalCandles * spacing
-        const targetOffset = Math.max(0, totalWidth - canvasWidth + rightMargin)
+      // Calculate optimal spacing to fill available width
+      const baseSpacing = 12 // Base candle spacing
+      const optimalTimeZoom = availableWidth / (actualCandlesToShow * baseSpacing)
+      const finalTimeZoom = Math.max(0.3, Math.min(4.0, optimalTimeZoom)) // Allow smaller zoom for more candles
+      
+      // Calculate starting index and offset
+      const startIndex = Math.max(0, tradingData.candles.length - actualCandlesToShow)
+      const targetOffset = startIndex * baseSpacing * finalTimeZoom
+      
+      // CALCULATE OPTIMAL PRICE ZOOM - BALANCED SIZE AND POSITIONING
+      const visibleCandles = tradingData.candles.slice(startIndex)
+      let finalPriceZoom = 2.5 // Increased base zoom for 50% taller candles
+      
+      if (visibleCandles.length > 0) {
+        // Get price range of visible candles
+        const visiblePrices = visibleCandles.map(c => [c.low, c.high]).flat()
+        const minPrice = Math.min(...visiblePrices)
+        const maxPrice = Math.max(...visiblePrices)
+        const priceRange = maxPrice - minPrice
         
-        state.setViewportState({
-          priceZoom: 1,
-          timeZoom: 1,
-          priceOffset: 0,
-          timeOffset: targetOffset,
-        })
+        // Calculate optimal zoom to fill 80% of chart height for 50% taller candles
+        const chartHeight = canvasHeight - 100 // Standard margins
+        const targetFillRatio = 0.8 // Increased from 70% to 80% for 50% taller candles
+        const optimalPriceZoom = (chartHeight * targetFillRatio) / (priceRange || 1)
         
-        console.log(`Showing ALL ${totalCandles} candles (positioned on right side)`)
-      } else {
-        // Show the last portion if we have more candles than fit on screen
-        const candlesToShow = idealVisibleCandles
-        const startIndex = Math.max(0, totalCandles - candlesToShow)
-        const targetOffset = startIndex * spacing
-        
-        state.setViewportState({
-          priceZoom: 1,
-          timeZoom: 1,
-          priceOffset: 0,
-          timeOffset: targetOffset,
-        })
-        
-        console.log(`Showing last ${candlesToShow} of ${totalCandles} candles`)
+        // Adjusted zoom bounds for taller candles
+        finalPriceZoom = Math.max(1.5, Math.min(12, optimalPriceZoom))
       }
+      
+      // ADJUSTED OFFSET FOR TALLER CANDLES - MORE UPWARD ADJUSTMENT
+      const adjustedOffset = -120 // Increased upward offset to account for taller candles
+      
+      state.setViewportState({
+        priceZoom: finalPriceZoom,
+        timeZoom: finalTimeZoom,
+        priceOffset: adjustedOffset, // Adjusted offset for proper centering of taller candles
+        timeOffset: targetOffset,
+      })
+      
+      console.log(`Timeframe navigation: ${actualCandlesToShow} candles, timeZoom: ${finalTimeZoom.toFixed(2)}, priceZoom: ${finalPriceZoom.toFixed(2)}, offset: ${adjustedOffset}`)
     }, 100) // Small delay to ensure everything is ready
     
     return () => clearTimeout(navigationTimeout)
@@ -192,31 +207,61 @@ export default function TradingTerminal() {
 
   // Reset chart to current price position (latest bars)
   const handleResetToCurrentPrice = useCallback(() => {
-    // IMPROVED CALCULATION for different timeframe scales (same as timeframe switching)
-    const spacing = 12 * 1 // Use default zoom for calculation
     const canvas = canvasRef.current
     if (!canvas || tradingData.candles.length === 0) return
     
-    // Calculate how many candles should be visible on screen (adaptive to timeframe)
+    // Calculate optimal display parameters
     const canvasWidth = canvas.offsetWidth
-    const rightMargin = 100 // Keep some margin from the right edge
+    const canvasHeight = canvas.offsetHeight
+    const rightMargin = 80  // Reduced margin for more space
+    const leftMargin = 50   // Left margin for price axis
+    const availableWidth = canvasWidth - rightMargin - leftMargin
     
-    // For longer timeframes with fewer total candles, show all available candles
-    // For shorter timeframes with many candles, show the last portion
-    const candlesToShow = Math.min(Math.floor((canvasWidth - rightMargin) / spacing), tradingData.candles.length)
-    const startIndex = Math.max(0, tradingData.candles.length - candlesToShow)
+    // CALCULATE OPTIMAL TIME ZOOM (horizontal sizing)
+    // Target: Show around 100 candles for better chart overview
+    const targetCandleCount = Math.min(120, Math.max(80, Math.floor(tradingData.candles.length * 0.8))) // Show 80-120 candles
+    const actualCandlesToShow = Math.min(targetCandleCount, tradingData.candles.length)
     
-    // Calculate offset to position the visible candles properly
-    const targetOffset = startIndex * spacing
+    // Calculate optimal spacing to fill available width
+    const baseSpacing = 12 // Base candle spacing
+    const optimalTimeZoom = availableWidth / (actualCandlesToShow * baseSpacing)
+    const finalTimeZoom = Math.max(0.3, Math.min(4.0, optimalTimeZoom)) // Allow smaller zoom for more candles
+    
+    // Calculate starting index and offset
+    const startIndex = Math.max(0, tradingData.candles.length - actualCandlesToShow)
+    const targetOffset = startIndex * baseSpacing * finalTimeZoom
+    
+    // CALCULATE OPTIMAL PRICE ZOOM - BALANCED SIZE AND POSITIONING
+    const visibleCandles = tradingData.candles.slice(startIndex)
+    let finalPriceZoom = 2.5 // Increased base zoom for 50% taller candles
+    
+    if (visibleCandles.length > 0) {
+      // Get price range of visible candles
+      const visiblePrices = visibleCandles.map(c => [c.low, c.high]).flat()
+      const minPrice = Math.min(...visiblePrices)
+      const maxPrice = Math.max(...visiblePrices)
+      const priceRange = maxPrice - minPrice
+      
+      // Calculate optimal zoom to fill 80% of chart height for 50% taller candles
+      const chartHeight = canvasHeight - 100 // Standard margins
+      const targetFillRatio = 0.8 // Increased from 70% to 80% for 50% taller candles
+      const optimalPriceZoom = (chartHeight * targetFillRatio) / (priceRange || 1)
+      
+      // Adjusted zoom bounds for taller candles
+      finalPriceZoom = Math.max(1.5, Math.min(12, optimalPriceZoom))
+    }
+    
+    // ADJUSTED OFFSET FOR TALLER CANDLES - MORE UPWARD ADJUSTMENT
+    const adjustedOffset = -120 // Increased upward offset to account for taller candles
     
     state.setViewportState({
-      priceZoom: 1,
-      timeZoom: 1,
-      priceOffset: 0,
+      priceZoom: finalPriceZoom,
+      timeZoom: finalTimeZoom,
+      priceOffset: adjustedOffset, // Adjusted offset for proper centering of taller candles
       timeOffset: targetOffset,
     })
     
-    console.log(`Reset to current candles (${tradingData.candles.length} candles, showing last ${candlesToShow})`)
+    console.log(`Reset to current: ${actualCandlesToShow} candles, timeZoom: ${finalTimeZoom.toFixed(2)}, priceZoom: ${finalPriceZoom.toFixed(2)}, offset: ${adjustedOffset}`)
   }, [state, tradingData.candles])
 
   const handleToggleIndicator = useCallback((indicator: string) => {
@@ -277,8 +322,21 @@ export default function TradingTerminal() {
   }, [state.resetViewportSettings])
 
   const handleToggleNavigationMode = useCallback(() => {
-    state.setNavigationMode(prev => prev === 'auto' ? 'manual' : 'auto')
-  }, [state.setNavigationMode])
+    const newMode = state.navigationMode === 'auto' ? 'manual' : 'auto'
+    state.setNavigationMode(newMode)
+    
+    // AUTO-NAVIGATION: When switching to auto mode, ensure candles are visible
+    if (newMode === 'auto') {
+      // Small delay to ensure mode change is processed
+      setTimeout(() => {
+        handleResetToCurrentPrice()
+      }, 50)
+      
+      console.log('Switched to Auto mode - navigating to current candles')
+    } else {
+      console.log('Switched to Manual mode - full directional control enabled')
+    }
+  }, [state.setNavigationMode, state.navigationMode, handleResetToCurrentPrice])
 
   // Handle canvas mouse movement for drawing rectangles
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {

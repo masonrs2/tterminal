@@ -17,6 +17,7 @@ interface UseChartInteractionsProps {
   dragState: DragState
   measuringSelection: MeasuringSelection
   isCreatingMeasurement: boolean
+  navigationMode: "auto" | "manual"
   setHoveredCandle: (candle: CandleData | null) => void
   setMousePosition: (pos: any) => void
   setDrawingTools: (tools: Drawing[] | ((prev: Drawing[]) => Drawing[])) => void
@@ -39,6 +40,7 @@ export const useChartInteractions = ({
   dragState,
   measuringSelection,
   isCreatingMeasurement,
+  navigationMode,
   setHoveredCandle,
   setMousePosition,
   setDrawingTools,
@@ -54,6 +56,105 @@ export const useChartInteractions = ({
   // Use ref to avoid stale closure issues with candleData
   const candleDataRef = useRef(candleData)
   candleDataRef.current = candleData
+
+  /**
+   * Calculate current candle height in pixels for smart zoom threshold detection
+   */
+  const calculateCandleHeight = useCallback((canvas: HTMLCanvasElement) => {
+    if (candleDataRef.current.length === 0) return 0
+    
+    const chartHeight = canvas.offsetHeight - 100
+    const prices = candleDataRef.current.map(c => [c.low, c.high]).flat()
+    const minPrice = Math.min(...prices)
+    const maxPrice = Math.max(...prices)
+    const priceRange = (maxPrice - minPrice) / viewportState.priceZoom
+    
+    // Calculate average candle body height in pixels
+    const avgCandleRange = candleDataRef.current.reduce((sum, candle) => {
+      return sum + Math.abs(candle.close - candle.open)
+    }, 0) / candleDataRef.current.length
+    
+    const avgCandleHeightPixels = (avgCandleRange / priceRange) * chartHeight
+    return avgCandleHeightPixels
+  }, [viewportState.priceZoom])
+
+  /**
+   * Smart zoom system: Horizontal first in auto mode, then 360 zoom when candles get too small
+   */
+  const handleSmartZoom = useCallback((e: WheelEvent, canvas: HTMLCanvasElement, x: number, y: number) => {
+    const MIN_CANDLE_HEIGHT = 8 // Minimum candle height in pixels before switching to 360 zoom
+    const HORIZONTAL_ZOOM_THRESHOLD = 15 // Switch to 360 zoom when candles are smaller than this
+    
+    const currentCandleHeight = calculateCandleHeight(canvas)
+    const shouldUse360Zoom = currentCandleHeight < HORIZONTAL_ZOOM_THRESHOLD
+    
+    // Ultra-snappy sensitivity for horizontal zoom
+    const horizontalSensitivity = Math.abs(e.deltaY) / 25 // More sensitive for snappy feel
+    const regularSensitivity = Math.abs(e.deltaY) / 34 // Regular sensitivity for 360 zoom
+    
+    if (navigationMode === 'auto' && !shouldUse360Zoom) {
+      // AUTO MODE: Horizontal zoom first (snappy and fast)
+      const zoomFactor = e.deltaY > 0 
+        ? Math.max(0.2, 1 - horizontalSensitivity * 0.7)  // Ultra-fast horizontal zoom out
+        : Math.min(4.0, 1 + horizontalSensitivity * 0.8)  // Ultra-fast horizontal zoom in
+        
+      setViewportState(prev => {
+        const newTimeZoom = Math.max(0.05, Math.min(50, prev.timeZoom * zoomFactor))
+        
+        // Maintain focal point for horizontal zoom
+        const spacing = 12
+        const timePositionInChart = x - 50 + prev.timeOffset
+        const timeFocalPoint = timePositionInChart / (spacing * prev.timeZoom)
+        
+        const newTimePosition = timeFocalPoint * spacing * newTimeZoom
+        const newTimeOffset = newTimePosition - (x - 50)
+        
+        return {
+          ...prev,
+          timeZoom: newTimeZoom,
+          timeOffset: newTimeOffset
+        }
+      })
+    } else {
+      // MANUAL MODE or AUTO MODE with small candles: 360 ZOOM
+      const zoomFactor = e.deltaY > 0 
+        ? Math.max(0.4, 1 - regularSensitivity * 0.4)  // Zoom out
+        : Math.min(2.5, 1 + regularSensitivity * 0.5)  // Zoom in
+      
+      setViewportState(prev => {
+        // Calculate the new zoom levels
+        const newTimeZoom = Math.max(0.01, Math.min(100, prev.timeZoom * zoomFactor))
+        const newPriceZoom = Math.max(0.01, Math.min(100, prev.priceZoom * zoomFactor))
+        
+        // Calculate focal point in chart coordinates
+        const chartHeight = canvas.offsetHeight - 100
+        const spacing = 12 // Base spacing
+        
+        // Time focal point (horizontal)
+        const timePositionInChart = x - 50 + prev.timeOffset
+        const timeFocalPoint = timePositionInChart / (spacing * prev.timeZoom)
+        
+        // Price focal point (vertical) 
+        const pricePositionInChart = y - 50 + prev.priceOffset
+        const priceFocalPoint = pricePositionInChart / (chartHeight * prev.priceZoom)
+        
+        // Calculate new offsets to maintain focal point
+        const newTimePosition = timeFocalPoint * spacing * newTimeZoom
+        const newTimeOffset = newTimePosition - (x - 50)
+        
+        const newPricePosition = priceFocalPoint * chartHeight * newPriceZoom
+        const newPriceOffset = newPricePosition - (y - 50)
+        
+        return {
+          ...prev,
+          timeZoom: newTimeZoom,
+          priceZoom: newPriceZoom,
+          timeOffset: newTimeOffset,
+          priceOffset: newPriceOffset
+        }
+      })
+    }
+  }, [navigationMode, calculateCandleHeight, setViewportState, viewportState.timeZoom, viewportState.priceZoom, viewportState.timeOffset, viewportState.priceOffset])
 
   /**
    * Detect if mouse is over Y-axis (price axis) or X-axis (time axis)
@@ -425,7 +526,7 @@ export const useChartInteractions = ({
   }, [selectedDrawingIndex, setDrawingTools, setSelectedDrawingIndex, setDrawingMode, setSelectedDrawingTool, setDragState, setMeasuringSelection, setIsCreatingMeasurement])
 
   /**
-   * Handle wheel events for ultra-fast zooming with axis detection
+   * Handle wheel events for ultra-fast zooming with smart zoom system
    */
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
@@ -440,7 +541,7 @@ export const useChartInteractions = ({
     // Detect which axis we're hovering over
     const axisZone = getAxisZone(x, y, canvas)
     
-    // Axis-specific zooming with focal point preservation
+    // Axis-specific zooming with focal point preservation (unchanged)
     if (axisZone === 'price-axis' || e.ctrlKey || e.metaKey) {
       // Price zoom (vertical) with focal point
       const wheelSensitivity = Math.abs(e.deltaY) / 31
@@ -490,46 +591,10 @@ export const useChartInteractions = ({
         }
       })
     } else {
-      // ⚡ 360 ZOOM - Camera-style focal point zooming ⚡
-      const sensitivity = Math.abs(e.deltaY) / 34
-      const zoomFactor = e.deltaY > 0 
-        ? Math.max(0.4, 1 - sensitivity * 0.4)  // Zoom out
-        : Math.min(2.5, 1 + sensitivity * 0.5)  // Zoom in
-      
-      setViewportState(prev => {
-        // Calculate the new zoom levels
-        const newTimeZoom = Math.max(0.01, Math.min(100, prev.timeZoom * zoomFactor))
-        const newPriceZoom = Math.max(0.01, Math.min(100, prev.priceZoom * zoomFactor))
-        
-        // Calculate focal point in chart coordinates
-        const chartHeight = canvas.offsetHeight - 100
-        const spacing = 12 // Base spacing
-        
-        // Time focal point (horizontal)
-        const timePositionInChart = x - 50 + prev.timeOffset // Position relative to chart start
-        const timeFocalPoint = timePositionInChart / (spacing * prev.timeZoom) // Normalized position
-        
-        // Price focal point (vertical) 
-        const pricePositionInChart = y - 50 + prev.priceOffset // Position relative to chart start
-        const priceFocalPoint = pricePositionInChart / (chartHeight * prev.priceZoom) // Normalized position
-        
-        // Calculate new offsets to maintain focal point
-        const newTimePosition = timeFocalPoint * spacing * newTimeZoom
-        const newTimeOffset = newTimePosition - (x - 50)
-        
-        const newPricePosition = priceFocalPoint * chartHeight * newPriceZoom
-        const newPriceOffset = newPricePosition - (y - 50)
-        
-        return {
-          ...prev,
-          timeZoom: newTimeZoom,
-          priceZoom: newPriceZoom,
-          timeOffset: newTimeOffset,
-          priceOffset: newPriceOffset
-        }
-      })
+      // SMART ZOOM SYSTEM: Use new intelligent zoom behavior
+      handleSmartZoom(e, canvas, x, y)
     }
-  }, [canvasRef, setViewportState, getAxisZone])
+  }, [canvasRef, setViewportState, getAxisZone, handleSmartZoom])
 
   return {
     handleMouseMove,
