@@ -1280,6 +1280,9 @@ export default function TradingTerminal() {
               showStatsBox: state.indicatorSettings.vpvr.showStatsBox,
               showVolumeText: state.indicatorSettings.vpvr.showVolumeText,
               opacity: state.indicatorSettings.vpvr.opacity,
+              showSinglePrints: state.indicatorSettings.vpvr.showSinglePrints,
+              singlePrintColor: state.indicatorSettings.vpvr.singlePrintColor,
+              singlePrintOpacity: state.indicatorSettings.vpvr.singlePrintOpacity,
             }}
             onSettingsChange={(newSettings) => {
               // PERFORMANCE: Update all settings at once for instant rendering

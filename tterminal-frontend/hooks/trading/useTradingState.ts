@@ -66,6 +66,9 @@ const defaultIndicatorSettings = {
     showStatsBox: true,
     showVolumeText: false,
     opacity: 0.7,
+    showSinglePrints: true,
+    singlePrintColor: "#fbbf24",
+    singlePrintOpacity: 0.3,
   },
   liquidations: {
     threshold: 10,

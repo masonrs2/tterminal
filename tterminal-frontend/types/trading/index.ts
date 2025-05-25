@@ -59,6 +59,13 @@ export interface VolumeProfileData {
   totalDelta: number
   priceRange: { min: number; max: number }
   rawCandles: CandleData[] // PERFORMANCE: Store raw data for recalculation
+  singlePrints: SinglePrint[] // Areas with no trading volume
+}
+
+export interface SinglePrint {
+  priceStart: number // Start of single print range
+  priceEnd: number   // End of single print range
+  isGap: boolean     // True if this is a price gap between candles
 }
 
 export interface TradeData {
@@ -111,6 +118,9 @@ export interface IndicatorSettings {
     showStatsBox: boolean
     showVolumeText: boolean
     opacity: number
+    showSinglePrints: boolean
+    singlePrintColor: string
+    singlePrintOpacity: number
   }
   liquidations: {
     threshold: number

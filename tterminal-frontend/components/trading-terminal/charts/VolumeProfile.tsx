@@ -23,6 +23,9 @@ interface VolumeProfileProps {
   showValueArea: boolean
   showStatsBox?: boolean
   showVolumeText?: boolean
+  showSinglePrints?: boolean
+  singlePrintColor?: string
+  singlePrintOpacity?: number
   opacity: number
   candleData: CandleData[]
   onPriceClick?: (price: number) => void
@@ -43,6 +46,9 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
   showValueArea = true,
   showStatsBox = true,
   showVolumeText = false,
+  showSinglePrints = false,
+  singlePrintColor = '#fbbf24',
+  singlePrintOpacity = 0.3,
   opacity = 0.7,
   candleData,
   onPriceClick,
@@ -60,6 +66,7 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
     error,
     isRealTimeActive,
     maxVolumeLevel,
+    singlePrints,
   } = useVolumeProfile({
     symbol,
     timeRange,
@@ -79,53 +86,55 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
     const maxBarWidth = chartWidth * 0.25 // 25% of chart width for volume bars
     const volumeScale = maxBarWidth / maxVolumeLevel.totalVolume
     
-    // CRITICAL FIX: Calculate bar height to prevent overlapping
-    // Only use levels that actually have volume and are visible
-    const levelsWithVolume = levels.filter(level => 
+    // CRITICAL FIX: Filter to only visible levels in current price range
+    const visibleLevels = levels.filter(level => 
       level.totalVolume > 0 && // Only levels with actual volume
       level.price >= priceRange.min && 
       level.price <= priceRange.max
     )
     
-    if (levelsWithVolume.length === 0) {
+    if (visibleLevels.length === 0) {
       return null // No volume to display
     }
     
-    // CRITICAL FIX: Calculate exact bar height to fill available space with NO overlapping
-    // Each bar should take up exactly its portion of the price range
-    const priceRangeSpan = priceRange.max - priceRange.min
-    const pricePerPixel = priceRangeSpan / chartHeight
+    // IMPROVED: Calculate optimal bar height based on actual price distribution
+    // Sort levels by price to calculate actual spacing
+    const sortedLevels = [...visibleLevels].sort((a, b) => a.price - b.price)
     
-    // Calculate the price range each level covers
-    const sortedLevels = [...levelsWithVolume].sort((a, b) => a.price - b.price)
-    let averagePriceStep = 0
+    // Calculate the actual price density
+    const priceSpan = priceRange.max - priceRange.min
+    const pixelsPerPrice = chartHeight / priceSpan
     
-    if (sortedLevels.length > 1) {
-      // Calculate average price step between levels
-      let totalSteps = 0
-      for (let i = 1; i < sortedLevels.length; i++) {
-        totalSteps += sortedLevels[i].price - sortedLevels[i-1].price
+    // Calculate average price gap between consecutive levels
+    let totalPriceGaps = 0
+    let gapCount = 0
+    
+    for (let i = 1; i < sortedLevels.length; i++) {
+      const gap = sortedLevels[i].price - sortedLevels[i-1].price
+      if (gap > 0) {
+        totalPriceGaps += gap
+        gapCount++
       }
-      averagePriceStep = totalSteps / (sortedLevels.length - 1)
-    } else {
-      // Single level - use a reasonable default
-      averagePriceStep = priceRangeSpan / 50
     }
     
-    // Convert price step to pixels and ensure no overlapping
-    const barHeight = Math.max(1, Math.floor(averagePriceStep / pricePerPixel * 0.9)) // 90% to ensure small gap
+    const averagePriceGap = gapCount > 0 ? totalPriceGaps / gapCount : priceSpan / visibleLevels.length
     
-    console.log(`📏 Anti-overlap bar height: ${barHeight}px for ${levelsWithVolume.length} levels (step: ${averagePriceStep.toFixed(2)}, range: ${priceRangeSpan.toFixed(2)})`)
+    // Convert average price gap to pixels and ensure reasonable bar height
+    let barHeight = Math.floor(averagePriceGap * pixelsPerPrice * 0.8) // 80% of gap for small spacing
+    barHeight = Math.max(2, Math.min(barHeight, 20)) // Clamp between 2-20 pixels
+    
+    console.log(`📏 Improved bar height: ${barHeight}px for ${visibleLevels.length} levels (avg gap: ${averagePriceGap.toFixed(4)}, density: ${pixelsPerPrice.toFixed(2)} px/price)`)
     
     return {
       maxBarWidth,
       volumeScale,
-      barHeight, // FIXED: Calculated to prevent overlapping
+      barHeight,
       startX: chartWidth - 80, // Start from price axis (80px is price axis width)
-      levelsWithVolume: levelsWithVolume.length,
-      averagePriceStep
+      visibleLevels: visibleLevels.length,
+      averagePriceGap,
+      pixelsPerPrice
     }
-  }, [maxVolumeLevel?.totalVolume, levels, chartWidth, chartHeight, priceRange]) // PERFORMANCE: Include priceRange for visible levels
+  }, [maxVolumeLevel?.totalVolume, levels, chartWidth, chartHeight, priceRange])
 
   // Convert price to Y coordinate
   const priceToY = useCallback((price: number): number => {
@@ -159,7 +168,7 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
     ctx.globalAlpha = 1.0 // Start with full opacity
     ctx.globalCompositeOperation = 'source-over'
 
-    const { volumeScale, barHeight, startX, levelsWithVolume, averagePriceStep } = volumeProfileConfig
+    const { volumeScale, barHeight, startX, visibleLevels, averagePriceGap, pixelsPerPrice } = volumeProfileConfig
 
     // CRITICAL FIX: Only render levels that have actual volume
     const levelsToRender = levels.filter(level => 
@@ -180,7 +189,7 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
         startX,
         maxBarWidth: volumeProfileConfig.maxBarWidth,
         barHeight: barHeight, // FIXED: Log the anti-overlap bar height
-        averagePriceStep: averagePriceStep
+        averagePriceGap: averagePriceGap
       })
     }
 
@@ -202,6 +211,49 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
       ctx.font = '10px monospace'
       ctx.fillText(`VAH: ${vah.toFixed(2)}`, 5, vahY - 2)
       ctx.fillText(`VAL: ${val.toFixed(2)}`, 5, valY + 12)
+    }
+
+    // Render single prints (if enabled)
+    if (showSinglePrints && singlePrints.length > 0) {
+      singlePrints.forEach((singlePrint, index) => {
+        const startY = priceToY(singlePrint.priceEnd) // Higher price = lower Y
+        const endY = priceToY(singlePrint.priceStart) // Lower price = higher Y
+        const height = endY - startY
+        
+        // Only render if the single print is visible in current price range
+        if (singlePrint.priceStart <= priceRange.max && singlePrint.priceEnd >= priceRange.min && height > 2) {
+          // Draw single print background box
+          ctx.fillStyle = `rgba(${parseInt(singlePrintColor.slice(1, 3), 16)}, ${parseInt(singlePrintColor.slice(3, 5), 16)}, ${parseInt(singlePrintColor.slice(5, 7), 16)}, ${singlePrintOpacity})`
+          ctx.fillRect(0, startY, displayWidth, height)
+          
+          // Draw single print border
+          ctx.strokeStyle = singlePrintColor
+          ctx.lineWidth = 1
+          ctx.setLineDash([3, 3])
+          ctx.strokeRect(0, startY, displayWidth, height)
+          ctx.setLineDash([])
+          
+          // Add "SP" label
+          const centerY = startY + height / 2
+          const priceRange = singlePrint.priceEnd - singlePrint.priceStart
+          
+          // Only show label if single print is tall enough
+          if (height > 20) {
+            ctx.fillStyle = singlePrintColor
+            ctx.font = 'bold 12px monospace'
+            ctx.textAlign = 'left'
+            
+            // Position label on the left side
+            ctx.fillText('SP', 10, centerY + 4)
+            
+            // Show price range if there's enough space
+            if (height > 35) {
+              ctx.font = '9px monospace'
+              ctx.fillText(`${singlePrint.priceStart.toFixed(1)}-${singlePrint.priceEnd.toFixed(1)}`, 10, centerY + 18)
+            }
+          }
+        }
+      })
     }
 
     // Render volume bars
@@ -297,7 +349,8 @@ export const VolumeProfile: React.FC<VolumeProfileProps> = React.memo(({
     ctx.restore()
   }, [
     levels, volumeProfileConfig, priceRange, chartHeight, chartWidth, opacity,
-    showDelta, showPOC, showValueArea, showVolumeText, poc, vah, val, isRealTimeActive, priceToY
+    showDelta, showPOC, showValueArea, showVolumeText, showSinglePrints, singlePrintColor, singlePrintOpacity,
+    poc, vah, val, isRealTimeActive, singlePrints, priceToY
   ])
 
   // Handle canvas click for price selection

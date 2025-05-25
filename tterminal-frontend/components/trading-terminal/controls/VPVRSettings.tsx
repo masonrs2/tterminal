@@ -22,6 +22,9 @@ interface VPVRSettingsProps {
     showStatsBox: boolean
     showVolumeText: boolean
     opacity: number
+    showSinglePrints: boolean
+    singlePrintColor: string
+    singlePrintOpacity: number
   }
   onSettingsChange: (settings: any) => void
   initialPosition?: { x: number; y: number }
@@ -170,6 +173,15 @@ export const VPVRSettings = forwardRef<HTMLDivElement, VPVRSettingsProps>(({
               />
               <span>Show Volume Text</span>
             </label>
+            <label className="flex items-center space-x-1" style={{ fontSize: '9px' }}>
+              <input
+                type="checkbox"
+                checked={settings.showSinglePrints}
+                onChange={(e) => updateSetting('showSinglePrints', e.target.checked)}
+                className="w-2.5 h-2.5 rounded"
+              />
+              <span>Show Single Prints</span>
+            </label>
           </div>
         </div>
 
@@ -269,6 +281,30 @@ export const VPVRSettings = forwardRef<HTMLDivElement, VPVRSettingsProps>(({
                 />
               </div>
             </div>
+
+            {/* Single Print Color */}
+            <div className="grid grid-cols-12 gap-1 items-center p-1 bg-[#0a0a0a] rounded border border-gray-700">
+              <div className="col-span-2">
+                <span className="font-medium text-orange-400" style={{ fontSize: '8px' }}>SP</span>
+              </div>
+              <div className="col-span-1">
+                <input
+                  type="color"
+                  value={settings.singlePrintColor}
+                  onChange={(e) => updateSetting('singlePrintColor', e.target.value)}
+                  className="w-3 h-2.5 rounded border-0"
+                />
+              </div>
+              <div className="col-span-9">
+                <input
+                  type="text"
+                  value={settings.singlePrintColor}
+                  onChange={(e) => updateSetting('singlePrintColor', e.target.value)}
+                  className="w-full bg-[#0f0f0f] border border-gray-600 rounded px-1 py-0.5 font-mono"
+                  style={{ fontSize: '7px' }}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -322,6 +358,27 @@ export const VPVRSettings = forwardRef<HTMLDivElement, VPVRSettingsProps>(({
           </div>
         </div>
 
+        {/* Single Print Opacity Slider */}
+        <div className="grid grid-cols-12 gap-1 items-center p-1 bg-[#0a0a0a] rounded border border-gray-700">
+          <div className="col-span-3">
+            <span className="font-medium text-orange-400" style={{ fontSize: '8px' }}>SP Opacity</span>
+          </div>
+          <div className="col-span-6">
+            <input
+              type="range"
+              min="0.1"
+              max="1.0"
+              step="0.1"
+              value={settings.singlePrintOpacity}
+              onChange={(e) => updateSetting('singlePrintOpacity', parseFloat(e.target.value))}
+              className="w-full h-1"
+            />
+          </div>
+          <div className="col-span-3">
+            <span className="text-gray-400" style={{ fontSize: '7px' }}>{(settings.singlePrintOpacity * 100).toFixed(0)}%</span>
+          </div>
+        </div>
+
         {/* Reset Button */}
         <div className="pt-2 border-t border-gray-600">
           <button
@@ -338,6 +395,9 @@ export const VPVRSettings = forwardRef<HTMLDivElement, VPVRSettingsProps>(({
               showStatsBox: true,
               showVolumeText: false,
               opacity: 0.7,
+              showSinglePrints: true,
+              singlePrintColor: "#fbbf24",
+              singlePrintOpacity: 0.3,
             })}
             className="w-full bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
             style={{ fontSize: '9px' }}
