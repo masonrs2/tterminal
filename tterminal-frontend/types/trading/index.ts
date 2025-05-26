@@ -147,6 +147,11 @@ export interface IndicatorSettings {
     lineColor: string
     lineWidth: number
     smoothing: boolean
+    type: 'histogram' | 'line'
+    histogramBullColor: string
+    histogramBearColor: string
+    showZeroLine: boolean
+    zeroLineColor: string
   }
   heatmap: {
     intensity: number
@@ -171,15 +176,16 @@ export interface ComponentSizes {
   orderbookWidth: number
   cvdHeight: number
   liquidationsHeight: number
+  cvdYOffset: number  // New: Y-axis offset for CVD chart
 }
 
 export interface DragState {
+  isDraggingChart: boolean
   isDraggingPrice: boolean
   isDraggingTime: boolean
-  isDraggingChart: boolean
-  isDraggingOrderbook: boolean
   isDraggingCvd: boolean
   isDraggingLiquidations: boolean
+  isDraggingCvdPrice: boolean  // New: Y-axis dragging for CVD chart
   dragStart: { x: number; y: number }
-  potentialDrag?: boolean
+  potentialDrag: boolean
 } 

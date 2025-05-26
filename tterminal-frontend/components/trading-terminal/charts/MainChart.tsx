@@ -597,34 +597,13 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
     ctx.stroke()
     ctx.setLineDash([])
 
-    // Draw crosshair
-    if (mousePosition.x > 0 && mousePosition.y > 0) {
-      ctx.strokeStyle = "#ffffff"
-      ctx.lineWidth = 1
-      ctx.setLineDash([2, 2])
-
-      // Vertical line
-      ctx.beginPath()
-      ctx.moveTo(mousePosition.x, 0)
-      ctx.lineTo(mousePosition.x, canvas.offsetHeight)
-      ctx.stroke()
-
-      // Horizontal line
-      ctx.beginPath()
-      ctx.moveTo(0, mousePosition.y)
-      ctx.lineTo(lineEndX, mousePosition.y)
-      ctx.stroke()
-
-      ctx.setLineDash([])
-
-      // Price label (cleaned up and only shown on hover)
-      if (mousePosition.price && mousePosition.x > canvas.offsetWidth - 100) {
-        ctx.fillStyle = "#ffffff"
-        ctx.fillRect(canvas.offsetWidth - 80, mousePosition.y - 10, 75, 20)
-        ctx.fillStyle = "#000000"
-        ctx.font = "10px monospace"
-        ctx.fillText(mousePosition.price.toFixed(1), canvas.offsetWidth - 77, mousePosition.y + 3)
-      }
+    // Draw price label (crosshair lines handled by global overlay)
+    if (mousePosition.x > 0 && mousePosition.y > 0 && mousePosition.price && mousePosition.x > canvas.offsetWidth - 100) {
+      ctx.fillStyle = "#ffffff"
+      ctx.fillRect(canvas.offsetWidth - 80, mousePosition.y - 10, 75, 20)
+      ctx.fillStyle = "#000000"
+      ctx.font = "10px monospace"
+      ctx.fillText(mousePosition.price.toFixed(1), canvas.offsetWidth - 77, mousePosition.y + 3)
     }
 
     // Draw drawings with selection highlighting

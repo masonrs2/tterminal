@@ -55,6 +55,16 @@ export interface MarkPriceUpdate {
   timestamp: number
 }
 
+export interface LiquidationUpdate {
+  type: 'liquidation_update'
+  symbol: string
+  side: string
+  price: number
+  quantity: number
+  trade_time: number
+  timestamp: number
+}
+
 export interface WebSocketMessage {
   type: string
   symbol?: string
@@ -65,7 +75,7 @@ export interface WebSocketMessage {
 }
 
 export interface MessageCallback {
-  (update: PriceUpdate | DepthUpdate | TradeUpdate | KlineUpdate | MarkPriceUpdate | WebSocketMessage): void
+  (update: PriceUpdate | DepthUpdate | TradeUpdate | KlineUpdate | MarkPriceUpdate | LiquidationUpdate | WebSocketMessage): void
 }
 
 export interface ConnectionCallback {
@@ -334,6 +344,10 @@ class TradingWebSocketService {
           this.handleMarkPriceUpdate(message as MarkPriceUpdate)
           break
 
+        case 'liquidation_update':
+          this.handleLiquidationUpdate(message as LiquidationUpdate)
+          break
+
         case 'subscribed':
           if (message.symbol) {
             this.subscribedSymbols.add(message.symbol)
@@ -472,6 +486,22 @@ class TradingWebSocketService {
           callback(update)
         } catch (error) {
           console.error('Error in mark price update callback:', error)
+        }
+      })
+    }
+  }
+
+  /**
+   * Handle liquidation updates
+   */
+  private handleLiquidationUpdate(update: LiquidationUpdate): void {
+    const callbacks = this.subscriptions.get(update.symbol)
+    if (callbacks && callbacks.size > 0) {
+      callbacks.forEach(callback => {
+        try {
+          callback(update)
+        } catch (error) {
+          console.error('Error in liquidation update callback:', error)
         }
       })
     }

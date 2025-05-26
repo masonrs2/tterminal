@@ -126,19 +126,20 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
           </button>
           {showTimeframes && (
             <div 
-              className="absolute top-8 left-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-20 min-w-20"
+              className="absolute top-8 left-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-50 min-w-20"
               onMouseEnter={() => handleDropdownEnter(onShowTimeframes, timeframesTimeoutRef)}
               onMouseLeave={() => handleDropdownLeave(onHideTimeframes, timeframesTimeoutRef)}
             >
               {timeframes.map((tf) => (
                 <div
                   key={tf}
-                  className={`px-3 py-2 text-xs font-mono cursor-pointer transition-colors ${
+                  className={`px-2 py-1 cursor-pointer transition-colors font-mono ${
                     tf === selectedTimeframe
                       ? 'bg-blue-600 text-white'
-                      : 'hover:bg-[#2a2a2a] hover:text-blue-300'
+                      : 'hover:bg-[#1a2a3a] hover:text-blue-300'
                   }`}
                   onClick={() => onSelectTimeframe(tf)}
+                  style={{ fontSize: '10px' }}
                 >
                   {tf}
                 </div>
@@ -167,31 +168,32 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
           </button>
           {showIndicators && (
             <div 
-              className="absolute top-8 left-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-20 min-w-48"
+              className="absolute top-8 left-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-50 min-w-48"
               onMouseEnter={() => handleDropdownEnter(onShowIndicators, indicatorsTimeoutRef)}
               onMouseLeave={() => handleDropdownLeave(onHideIndicators, indicatorsTimeoutRef)}
             >
               {indicators.map((indicator) => (
                 <div
                   key={indicator}
-                  className={`flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer transition-colors ${
+                  className={`flex items-center justify-between px-2 py-1 cursor-pointer transition-colors font-mono ${
                     activeIndicators.includes(indicator)
-                      ? 'bg-[#1a2a1a] hover:bg-[#2a3a2a] text-green-300'
-                      : 'hover:bg-[#2a2a2a] hover:text-blue-300'
+                      ? 'bg-[#1a2a3a] hover:bg-[#2a3a4a] text-blue-300'
+                      : 'hover:bg-[#1a2a3a] hover:text-blue-300'
                   }`}
                   onClick={() => onToggleIndicator(indicator)}
+                  style={{ fontSize: '10px' }}
                 >
-                  <span className="font-mono text-xs">{indicator}</span>
+                  <span className="font-mono">{indicator}</span>
                   <div
-                    className={`w-3 h-3 rounded border transition-colors ${
+                    className={`w-2.5 h-2.5 rounded border transition-colors ${
                       activeIndicators.includes(indicator) 
-                        ? "bg-green-500 border-green-500" 
+                        ? "bg-blue-500 border-blue-500" 
                         : "border-gray-500"
                     }`}
                   >
                     {activeIndicators.includes(indicator) && (
                       <div className="w-full h-full flex items-center justify-center">
-                        <div className="w-1 h-1 bg-white rounded-full"></div>
+                        <div className="w-0.5 h-0.5 bg-white rounded-full"></div>
                       </div>
                     )}
                   </div>
@@ -219,35 +221,37 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
           </button>
           {showTools && (
             <div 
-              className="absolute top-8 left-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-20 min-w-48"
+              className="absolute top-8 left-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-50 min-w-48"
               onMouseEnter={() => handleDropdownEnter(onShowTools, toolsTimeoutRef)}
               onMouseLeave={() => handleDropdownLeave(onHideTools, toolsTimeoutRef)}
             >
               {drawingToolsList.map((tool) => (
                 <div
                   key={tool}
-                  className={`flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer transition-colors ${
+                  className={`flex items-center justify-between px-2 py-1 cursor-pointer transition-colors font-mono ${
                     selectedDrawingTool === tool
                       ? 'bg-orange-600 text-white'
-                      : 'hover:bg-[#2a2a2a] hover:text-blue-300'
+                      : 'hover:bg-[#1a2a3a] hover:text-blue-300'
                   }`}
                   onClick={() => onSelectDrawingTool(tool)}
+                  style={{ fontSize: '10px' }}
                 >
-                  <span className="font-mono text-xs">{tool}</span>
-                  {tool === "Horizontal Ray" && <Minus className="w-3 h-3" />}
-                  {tool === "Rectangle" && <Square className="w-3 h-3" />}
-                  {tool === "Measuring Tool" && <Ruler className="w-3 h-3" />}
+                  <span className="font-mono">{tool}</span>
+                  {tool === "Horizontal Ray" && <Minus className="w-2.5 h-2.5" />}
+                  {tool === "Rectangle" && <Square className="w-2.5 h-2.5" />}
+                  {tool === "Measuring Tool" && <Ruler className="w-2.5 h-2.5" />}
                 </div>
               ))}
               <div className="border-t border-gray-600 my-1"></div>
               <div
-                className="flex items-center justify-between px-3 py-2 text-xs font-mono hover:bg-[#2a2a2a] hover:text-red-300 cursor-pointer transition-colors"
+                className="flex items-center justify-between px-2 py-1 cursor-pointer transition-colors font-mono hover:bg-[#1a2a3a] hover:text-red-300"
                 onClick={onClearDrawings}
+                style={{ fontSize: '10px' }}
               >
-                <span className="font-mono text-xs">Clear All Drawings</span>
-                <X className="w-3 h-3" />
+                <span className="font-mono">Clear All Drawings</span>
+                <X className="w-2.5 h-2.5" />
               </div>
-              <div className="px-3 py-1 text-xs font-mono text-gray-400 text-center border-t border-gray-600">
+              <div className="px-2 py-1 text-gray-400 text-center border-t border-gray-600 font-mono" style={{ fontSize: '9px' }}>
                 Right-click to remove individual drawings
               </div>
             </div>

@@ -93,6 +93,11 @@ const defaultIndicatorSettings = {
     lineColor: "#00ff88",
     lineWidth: 2,
     smoothing: false,
+    type: "histogram",
+    histogramBullColor: "#00ff88",
+    histogramBearColor: "#ff4444",
+    showZeroLine: true,
+    zeroLineColor: "#666666",
   },
   heatmap: {
     intensity: 0.8,
@@ -172,17 +177,33 @@ export const useTradingState = () => {
   const [viewportState, setViewportState] = useState<ViewportState>(persistedViewportState)
 
   // Component sizes (persisted)
-  const [componentSizes, setComponentSizes] = useState<ComponentSizes>(persistedComponentSizes)
+  const [componentSizes, setComponentSizes] = useState(() => {
+    if (typeof window === 'undefined') return {
+      orderbookWidth: 300,
+      cvdHeight: 120,
+      liquidationsHeight: 120,
+      cvdYOffset: 0,  // New: Y-axis offset for CVD chart
+    }
+    
+    const saved = localStorage.getItem('tterminal-component-sizes')
+    return saved ? JSON.parse(saved) : {
+      orderbookWidth: 300,
+      cvdHeight: 120,
+      liquidationsHeight: 120,
+      cvdYOffset: 0,  // New: Y-axis offset for CVD chart
+    }
+  })
 
   // Drag states (not persisted - runtime only)
   const [dragState, setDragState] = useState<DragState>({
+    isDraggingChart: false,
     isDraggingPrice: false,
     isDraggingTime: false,
-    isDraggingChart: false,
-    isDraggingOrderbook: false,
     isDraggingCvd: false,
     isDraggingLiquidations: false,
+    isDraggingCvdPrice: false,
     dragStart: { x: 0, y: 0 },
+    potentialDrag: false,
   })
 
   // Debounced save functions to optimize localStorage writes

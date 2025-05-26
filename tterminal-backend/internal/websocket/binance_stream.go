@@ -670,10 +670,14 @@ func (bs *BinanceStream) processLiquidationUpdate(data BinanceLiquidationData) {
 	}
 	bs.liquidationData[symbol] = liquidations
 
-	// Parse liquidation data
-	price, err := strconv.ParseFloat(data.LiquidationOrder.Price, 64)
+	// Parse liquidation data - use AVERAGE PRICE for accuracy (actual liquidation price)
+	price, err := strconv.ParseFloat(data.LiquidationOrder.AveragePrice, 64)
 	if err != nil {
-		return
+		// Fallback to order price if average price is not available
+		price, err = strconv.ParseFloat(data.LiquidationOrder.Price, 64)
+		if err != nil {
+			return
+		}
 	}
 
 	quantity, err := strconv.ParseFloat(data.LiquidationOrder.OriginalQuantity, 64)
@@ -681,15 +685,17 @@ func (bs *BinanceStream) processLiquidationUpdate(data BinanceLiquidationData) {
 		return
 	}
 
-	// Create liquidation update message
+	// Create liquidation update message with accurate data
 	liquidationUpdate := map[string]interface{}{
-		"type":       "liquidation_update",
-		"symbol":     symbol,
-		"side":       data.LiquidationOrder.Side,
-		"price":      price,
-		"quantity":   quantity,
-		"trade_time": data.LiquidationOrder.TradeTime,
-		"timestamp":  time.Now().UnixMilli(),
+		"type":         "liquidation_update",
+		"symbol":       symbol,
+		"side":         data.LiquidationOrder.Side,
+		"price":        price,                       // Using average price (actual liquidation price)
+		"order_price":  data.LiquidationOrder.Price, // Include order price for reference
+		"quantity":     quantity,
+		"trade_time":   data.LiquidationOrder.TradeTime,
+		"timestamp":    time.Now().UnixMilli(),
+		"order_status": data.LiquidationOrder.OrderStatus,
 	}
 
 	// Broadcast liquidation update

@@ -21,6 +21,24 @@ interface WebSocketPriceState {
   lastUpdate: number
 }
 
+export interface LiquidationUpdate {
+  type: 'liquidation_update'
+  symbol: string
+  side: string
+  price: number
+  quantity: number
+  trade_time: number
+  timestamp: number
+}
+
+export interface WebSocketPriceData {
+  price: number | null
+  isConnected: boolean
+  lastUpdate: number
+  connectionAttempts: number
+  liquidations: LiquidationUpdate[]
+}
+
 export const useWebSocketPrice = (options: UseWebSocketPriceOptions) => {
   const { symbol, enabled = true } = options
   

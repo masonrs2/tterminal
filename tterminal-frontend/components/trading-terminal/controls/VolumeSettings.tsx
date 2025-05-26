@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback, forwardRef } from 'react'
-import { X, GripVertical } from 'lucide-react'
+import { X, GripVertical, ChevronDown } from 'lucide-react'
 
 interface VolumeSettingsProps {
   isOpen: boolean
@@ -37,6 +37,8 @@ export const VolumeSettings = forwardRef<HTMLDivElement, VolumeSettingsProps>(({
   const [position, setPosition] = useState(initialPosition)
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [showBarTypeDropdown, setShowBarTypeDropdown] = useState(false)
+  const [showPositionDropdown, setShowPositionDropdown] = useState(false)
 
   const updateSetting = useCallback((key: string, value: any) => {
     onSettingsChange({ [key]: value })
@@ -74,6 +76,19 @@ export const VolumeSettings = forwardRef<HTMLDivElement, VolumeSettingsProps>(({
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
 
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowBarTypeDropdown(false)
+      setShowPositionDropdown(false)
+    }
+    
+    if (showBarTypeDropdown || showPositionDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showBarTypeDropdown, showPositionDropdown])
+
   if (!isOpen) return null
 
   return (
@@ -107,66 +122,107 @@ export const VolumeSettings = forwardRef<HTMLDivElement, VolumeSettingsProps>(({
         className="p-3 space-y-3 max-h-96 overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Volume Bar Type Dropdown */}
+        {/* Volume Bar Type Dropdown - Custom styled to match indicators */}
         <div>
           <h4 className="text-xs font-light text-gray-300 mb-1" style={{ fontSize: '10px' }}>Volume Bar Type</h4>
-          <select
-            value={settings.barType}
-            onChange={(e) => updateSetting('barType', e.target.value)}
-            className="w-full bg-[#0f0f0f] border border-gray-600 rounded px-2 py-1 text-white font-light"
-            style={{ fontSize: '9px' }}
-          >
-            <option value="total">Total</option>
-            <option value="delta">Delta</option>
-          </select>
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowBarTypeDropdown(!showBarTypeDropdown)
+                setShowPositionDropdown(false)
+              }}
+              className={`w-full flex items-center justify-between bg-[#0f0f0f] border border-gray-600 rounded px-2 py-1 text-white font-light hover:border-blue-400 focus:border-blue-500 focus:outline-none transition-colors ${
+                showBarTypeDropdown ? 'border-blue-500 bg-[#1a1a1a]' : ''
+              }`}
+              style={{ fontSize: '9px' }}
+            >
+              <span>{settings.barType === 'total' ? 'Total' : 'Delta'}</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+            {showBarTypeDropdown && (
+              <div className="absolute top-full left-0 right-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-50 mt-1">
+                <div
+                  className={`px-2 py-1 text-xs font-light cursor-pointer transition-colors ${
+                    settings.barType === 'total'
+                      ? 'bg-blue-600 text-white'
+                      : 'hover:bg-[#1a2a3a] hover:text-blue-300'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    updateSetting('barType', 'total')
+                    setShowBarTypeDropdown(false)
+                  }}
+                  style={{ fontSize: '9px' }}
+                >
+                  Total
+                </div>
+                <div
+                  className={`px-2 py-1 text-xs font-light cursor-pointer transition-colors ${
+                    settings.barType === 'delta'
+                      ? 'bg-blue-600 text-white'
+                      : 'hover:bg-[#1a2a3a] hover:text-blue-300'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    updateSetting('barType', 'delta')
+                    setShowBarTypeDropdown(false)
+                  }}
+                  style={{ fontSize: '9px' }}
+                >
+                  Delta
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Display Options */}
         <div>
           <h4 className="text-xs font-light text-gray-300 mb-1" style={{ fontSize: '10px' }}>Display Options</h4>
           <div className="grid grid-cols-2 gap-2">
-            <label className="flex items-center space-x-1 font-light" style={{ fontSize: '9px' }}>
+            <label className="flex items-center space-x-1 font-light hover:text-blue-300 transition-colors cursor-pointer" style={{ fontSize: '9px' }}>
               <input
                 type="checkbox"
                 checked={settings.showBuyVolume}
                 onChange={(e) => updateSetting('showBuyVolume', e.target.checked)}
-                className="w-2.5 h-2.5 rounded"
+                className="w-2.5 h-2.5 rounded accent-blue-500"
               />
               <span>Show Buy Volume</span>
             </label>
-            <label className="flex items-center space-x-1 font-light" style={{ fontSize: '9px' }}>
+            <label className="flex items-center space-x-1 font-light hover:text-blue-300 transition-colors cursor-pointer" style={{ fontSize: '9px' }}>
               <input
                 type="checkbox"
                 checked={settings.showSellVolume}
                 onChange={(e) => updateSetting('showSellVolume', e.target.checked)}
-                className="w-2.5 h-2.5 rounded"
+                className="w-2.5 h-2.5 rounded accent-blue-500"
               />
               <span>Show Sell Volume</span>
             </label>
-            <label className="flex items-center space-x-1 font-light" style={{ fontSize: '9px' }}>
+            <label className="flex items-center space-x-1 font-light hover:text-blue-300 transition-colors cursor-pointer" style={{ fontSize: '9px' }}>
               <input
                 type="checkbox"
                 checked={settings.showDelta}
                 onChange={(e) => updateSetting('showDelta', e.target.checked)}
-                className="w-2.5 h-2.5 rounded"
+                className="w-2.5 h-2.5 rounded accent-blue-500"
               />
               <span>Show Delta</span>
             </label>
-            <label className="flex items-center space-x-1 font-light" style={{ fontSize: '9px' }}>
+            <label className="flex items-center space-x-1 font-light hover:text-blue-300 transition-colors cursor-pointer" style={{ fontSize: '9px' }}>
               <input
                 type="checkbox"
                 checked={settings.showPercentage}
                 onChange={(e) => updateSetting('showPercentage', e.target.checked)}
-                className="w-2.5 h-2.5 rounded"
+                className="w-2.5 h-2.5 rounded accent-blue-500"
               />
               <span>Show Percentage</span>
             </label>
-            <label className="flex items-center space-x-1 font-light" style={{ fontSize: '9px' }}>
+            <label className="flex items-center space-x-1 font-light hover:text-blue-300 transition-colors cursor-pointer" style={{ fontSize: '9px' }}>
               <input
                 type="checkbox"
                 checked={settings.showTotalVolume}
                 onChange={(e) => updateSetting('showTotalVolume', e.target.checked)}
-                className="w-2.5 h-2.5 rounded"
+                className="w-2.5 h-2.5 rounded accent-blue-500"
               />
               <span>Show Total Volume</span>
             </label>
@@ -174,7 +230,7 @@ export const VolumeSettings = forwardRef<HTMLDivElement, VolumeSettingsProps>(({
         </div>
 
         {/* Bar Height - Compact slider */}
-        <div className="grid grid-cols-12 gap-1 items-center p-1 bg-[#0a0a0a] rounded border border-gray-700">
+        <div className="grid grid-cols-12 gap-1 items-center p-1 bg-[#0a0a0a] rounded border border-gray-700 hover:border-blue-400 transition-colors">
           <div className="col-span-3">
             <span className="font-light text-blue-400" style={{ fontSize: '8px' }}>Bar height</span>
           </div>
@@ -186,7 +242,7 @@ export const VolumeSettings = forwardRef<HTMLDivElement, VolumeSettingsProps>(({
               step="0.05"
               value={settings.barHeight}
               onChange={(e) => updateSetting('barHeight', parseFloat(e.target.value))}
-              className="w-full h-1"
+              className="w-full h-1 accent-blue-500"
             />
           </div>
           <div className="col-span-3">
@@ -199,30 +255,30 @@ export const VolumeSettings = forwardRef<HTMLDivElement, VolumeSettingsProps>(({
           <h4 className="text-xs font-light text-gray-300 mb-1" style={{ fontSize: '10px' }}>Colors</h4>
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="block text-gray-400 mb-1 font-light" style={{ fontSize: '9px' }}>Buy</label>
+              <label className="block text-gray-400 mb-1 font-light hover:text-blue-300 transition-colors" style={{ fontSize: '9px' }}>Buy</label>
               <input
                 type="color"
                 value={settings.buyColor}
                 onChange={(e) => updateSetting('buyColor', e.target.value)}
-                className="w-full h-6 rounded border border-gray-600"
+                className="w-full h-6 rounded border border-gray-600 hover:border-blue-400 transition-colors cursor-pointer"
               />
             </div>
             <div>
-              <label className="block text-gray-400 mb-1 font-light" style={{ fontSize: '9px' }}>Sell</label>
+              <label className="block text-gray-400 mb-1 font-light hover:text-blue-300 transition-colors" style={{ fontSize: '9px' }}>Sell</label>
               <input
                 type="color"
                 value={settings.sellColor}
                 onChange={(e) => updateSetting('sellColor', e.target.value)}
-                className="w-full h-6 rounded border border-gray-600"
+                className="w-full h-6 rounded border border-gray-600 hover:border-blue-400 transition-colors cursor-pointer"
               />
             </div>
             <div>
-              <label className="block text-gray-400 mb-1 font-light" style={{ fontSize: '9px' }}>Delta</label>
+              <label className="block text-gray-400 mb-1 font-light hover:text-blue-300 transition-colors" style={{ fontSize: '9px' }}>Delta</label>
               <input
                 type="color"
                 value={settings.deltaColor}
                 onChange={(e) => updateSetting('deltaColor', e.target.value)}
-                className="w-full h-6 rounded border border-gray-600"
+                className="w-full h-6 rounded border border-gray-600 hover:border-blue-400 transition-colors cursor-pointer"
               />
             </div>
           </div>
@@ -231,19 +287,60 @@ export const VolumeSettings = forwardRef<HTMLDivElement, VolumeSettingsProps>(({
         {/* Position and Opacity */}
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-gray-400 mb-1 font-light" style={{ fontSize: '9px' }}>Position</label>
-            <select
-              value={settings.position}
-              onChange={(e) => updateSetting('position', e.target.value)}
-              className="w-full bg-[#0f0f0f] border border-gray-600 rounded px-1 py-0.5 font-light"
-              style={{ fontSize: '9px' }}
-            >
-              <option value="bottom">Bottom</option>
-              <option value="top">Top</option>
-            </select>
+            <label className="block text-gray-400 mb-1 font-light hover:text-blue-300 transition-colors" style={{ fontSize: '9px' }}>Position</label>
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowPositionDropdown(!showPositionDropdown)
+                  setShowBarTypeDropdown(false)
+                }}
+                className={`w-full flex items-center justify-between bg-[#0f0f0f] border border-gray-600 rounded px-1 py-0.5 font-light hover:border-blue-400 focus:border-blue-500 focus:outline-none transition-colors ${
+                  showPositionDropdown ? 'border-blue-500 bg-[#1a1a1a]' : ''
+                }`}
+                style={{ fontSize: '9px' }}
+              >
+                <span>{settings.position === 'bottom' ? 'Bottom' : 'Top'}</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              {showPositionDropdown && (
+                <div className="absolute top-full left-0 right-0 bg-[#0f0f0f] border border-gray-600 rounded shadow-lg z-50 mt-1">
+                  <div
+                    className={`px-1 py-0.5 text-xs font-light cursor-pointer transition-colors ${
+                      settings.position === 'bottom'
+                        ? 'bg-blue-600 text-white'
+                        : 'hover:bg-[#1a2a3a] hover:text-blue-300'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      updateSetting('position', 'bottom')
+                      setShowPositionDropdown(false)
+                    }}
+                    style={{ fontSize: '9px' }}
+                  >
+                    Bottom
+                  </div>
+                  <div
+                    className={`px-1 py-0.5 text-xs font-light cursor-pointer transition-colors ${
+                      settings.position === 'top'
+                        ? 'bg-blue-600 text-white'
+                        : 'hover:bg-[#1a2a3a] hover:text-blue-300'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      updateSetting('position', 'top')
+                      setShowPositionDropdown(false)
+                    }}
+                    style={{ fontSize: '9px' }}
+                  >
+                    Top
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div>
-            <label className="block text-gray-400 mb-1 font-light" style={{ fontSize: '9px' }}>Opacity</label>
+            <label className="block text-gray-400 mb-1 font-light hover:text-blue-300 transition-colors" style={{ fontSize: '9px' }}>Opacity</label>
             <input
               type="number"
               min="0.1"
@@ -251,7 +348,7 @@ export const VolumeSettings = forwardRef<HTMLDivElement, VolumeSettingsProps>(({
               step="0.1"
               value={settings.opacity}
               onChange={(e) => updateSetting('opacity', parseFloat(e.target.value))}
-              className="w-full bg-[#0f0f0f] border border-gray-600 rounded px-1 py-0.5 font-light"
+              className="w-full bg-[#0f0f0f] border border-gray-600 rounded px-1 py-0.5 font-light hover:border-blue-400 focus:border-blue-500 focus:outline-none transition-colors"
               style={{ fontSize: '9px' }}
             />
           </div>
@@ -274,7 +371,7 @@ export const VolumeSettings = forwardRef<HTMLDivElement, VolumeSettingsProps>(({
               barHeight: 0.3,
               position: "bottom",
             })}
-            className="w-full bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors font-light"
+            className="w-full bg-gray-700 hover:bg-blue-600 text-white px-2 py-1 rounded transition-colors font-light"
             style={{ fontSize: '9px' }}
           >
             Reset
