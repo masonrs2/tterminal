@@ -82,7 +82,7 @@ const getIntervalInMs = (interval: string): number => {
 }
 
 const defaultOptions: UseTradingDataOptions = {
-  symbol: 'BTCUSDT',
+  symbol: '',
   interval: '1m',
   limit: getTimeframeLimits('1m'),
   enableRealTimeUpdates: true,
@@ -261,7 +261,7 @@ export const useTradingData = (options: Partial<UseTradingDataOptions> = {}) => 
               updatedCandles = [...updatedCandles, newCandle]
               candleWasUpdated = true
               
-              console.log(`🆕 New candle created for ${opts.symbol}/${opts.interval}`)
+              console.log(`NEW CANDLE: New candle created for ${opts.symbol}/${opts.interval}`)
               
             } else {
               // UPDATE EXISTING LAST CANDLE (current time period)

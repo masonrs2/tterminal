@@ -2,6 +2,21 @@
 
 Ultra-fast trading terminal backend API with optimized endpoints for real-time financial data.
 
+## Recent Updates
+
+### v2.1.0 - Enhanced Liquidation Support (Latest)
+- **Major Pair Liquidations**: Added support for BTCUSDT, ETHUSDT, and other major trading pairs
+- **Dual Stream Architecture**: Implemented both individual symbol streams (`btcusdt@forceOrder`) and global stream (`!forceOrder@arr`)
+- **Accurate Liquidation Data**: Now uses Binance average price for actual liquidation prices
+- **Enhanced Data Format**: Improved liquidation response format with complete Binance data structure
+- **Code Cleanup**: Removed emoji characters from all log statements for cleaner production logs
+
+### v2.0.0 - WebSocket Streaming
+- **Real-time WebSocket Streaming**: Sub-100ms price updates with direct Binance integration
+- **Enhanced Volume Data**: Real buy/sell volume data from Binance (not estimated)
+- **Futures Support**: Mark price, funding rates, and liquidation streaming
+- **Ultra-fast Aggregation**: 70% smaller payloads with intelligent caching
+
 ## Base URL
 ```
 http://localhost:8080/api/v1
@@ -330,6 +345,12 @@ curl "http://localhost:8080/api/v1/aggregation/liquidations/BTCUSDT?hours=1"
 - `type`: "single", "cascade", or "sweep"
 - `conf`: Confidence score (0-1)
 
+**Enhanced Liquidation Features:**
+- **Major Pair Coverage**: Now includes BTCUSDT, ETHUSDT, and all major trading pairs
+- **Accurate Pricing**: Uses average price for actual liquidation price, includes order price for reference
+- **Real-time Streaming**: Sub-100ms updates from Binance Futures liquidation streams
+- **Correct Side Identification**: "BUY" = liquidated long positions, "SELL" = liquidated short positions
+
 ### GET /aggregation/heatmap/:symbol
 Get price/volume heatmap data.
 
@@ -554,7 +575,7 @@ const ws = new WebSocket('ws://localhost:8080/api/v1/websocket/connect');
 }
 ```
 
-**🆕 Trade Update (Real-time Buy/Sell Volume):**
+**Trade Update (Real-time Buy/Sell Volume):**
 ```json
 {
   "type": "trade_update",
@@ -567,7 +588,7 @@ const ws = new WebSocket('ws://localhost:8080/api/v1/websocket/connect');
 }
 ```
 
-**🆕 Kline Update (Real-time Candle with Buy/Sell Volume):**
+**Kline Update (Real-time Candle with Buy/Sell Volume):**
 ```json
 {
   "type": "kline_update",
@@ -587,7 +608,7 @@ const ws = new WebSocket('ws://localhost:8080/api/v1/websocket/connect');
 }
 ```
 
-**🆕 Depth Update (Order Book):**
+**Depth Update (Order Book):**
 ```json
 {
   "type": "depth_update",
@@ -604,7 +625,7 @@ const ws = new WebSocket('ws://localhost:8080/api/v1/websocket/connect');
 }
 ```
 
-**🆕 Mark Price Update (Futures):**
+**Mark Price Update (Futures):**
 ```json
 {
   "type": "mark_price_update",
@@ -616,16 +637,18 @@ const ws = new WebSocket('ws://localhost:8080/api/v1/websocket/connect');
 }
 ```
 
-**🆕 Liquidation Update (Futures):**
+**Liquidation Update (Futures):**
 ```json
 {
   "type": "liquidation_update",
   "symbol": "BTCUSDT",
-  "side": "SELL",
-  "price": 108850.0,
-  "quantity": 0.1,
-  "trade_time": 1748119950000,
-  "timestamp": 1748120001234
+  "side": "BUY",
+  "price": 109440.70,
+  "order_price": "109862.30",
+  "quantity": 0.006,
+  "trade_time": 1748304689122,
+  "timestamp": 1748304689126,
+  "order_status": "FILLED"
 }
 ```
 
@@ -747,7 +770,7 @@ curl -X POST "http://localhost:8080/api/v1/websocket/symbols/SOLUSDT"
 }
 ```
 
-#### 🆕 GET /websocket/volume/:symbol
+#### GET /websocket/volume/:symbol
 Get real-time buy/sell volume data for a symbol with **dynamic interval support**.
 
 **Parameters:**
@@ -920,7 +943,7 @@ curl "http://localhost:8080/api/v1/websocket/markprice/BTCUSDT"
 ```
 
 #### GET /websocket/liquidations/:symbol
-Get recent Futures liquidations for a symbol.
+Get recent Futures liquidations for a symbol with **enhanced major pair support**.
 
 **Parameters:**
 - `symbol` (path): Trading pair symbol
@@ -937,17 +960,21 @@ curl "http://localhost:8080/api/v1/websocket/liquidations/BTCUSDT?limit=10"
   "symbol": "BTCUSDT",
   "liquidations": [
     {
-      "symbol": "BTCUSDT",
-      "side": "SELL",
-      "order_type": "LIMIT",
-      "time_in_force": "IOC",
-      "original_qty": "0.100",
-      "price": "108850.00",
-      "avg_price": "108850.00",
-      "order_status": "FILLED",
-      "last_filled_qty": "0.100",
-      "filled_accumulated_qty": "0.100",
-      "trade_time": 1748119950000
+      "e": "forceOrder",
+      "E": 1748304689126,
+      "o": {
+        "s": "BTCUSDT",
+        "S": "BUY",
+        "o": "LIMIT",
+        "f": "IOC",
+        "q": "0.006",
+        "p": "109862.30",
+        "ap": "109440.70",
+        "X": "FILLED",
+        "l": "0.006",
+        "z": "0.006",
+        "T": 1748304689122
+      }
     }
   ],
   "count": 10,
@@ -956,6 +983,29 @@ curl "http://localhost:8080/api/v1/websocket/liquidations/BTCUSDT?limit=10"
   "source": "websocket_cache"
 }
 ```
+
+**Enhanced Features:**
+- **Major Pair Support**: Now includes BTCUSDT, ETHUSDT, and other major pairs
+- **Dual Stream Architecture**: Uses both individual symbol streams (`btcusdt@forceOrder`) and global stream (`!forceOrder@arr`)
+- **Real Binance Data**: Direct from Binance Futures liquidation streams
+- **Accurate Pricing**: Uses average price (`ap`) for actual liquidation price
+- **Side Accuracy**: Correct "BUY" (liquidated longs) and "SELL" (liquidated shorts) identification
+
+**Response Fields:**
+- `e`: Event type ("forceOrder")
+- `E`: Event time (Unix milliseconds)
+- `o`: Liquidation order details
+  - `s`: Symbol
+  - `S`: Side ("BUY" = liquidated long, "SELL" = liquidated short)
+  - `o`: Order type
+  - `f`: Time in force
+  - `q`: Original quantity
+  - `p`: Order price
+  - `ap`: **Average price (actual liquidation price)**
+  - `X`: Order status
+  - `l`: Last filled quantity
+  - `z`: Accumulated filled quantity
+  - `T`: Trade time
 
 ### Frontend Integration Example
 

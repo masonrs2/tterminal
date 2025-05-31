@@ -308,8 +308,10 @@ func (wsc *WebSocketController) GetRecentLiquidations(c echo.Context) error {
 	}
 
 	liquidations := wsc.binanceStream.GetRecentLiquidations(symbol, limit)
+
+	// Return empty array instead of error when no liquidations exist
 	if liquidations == nil {
-		return c.JSON(404, map[string]string{"error": "Liquidation data not found for symbol"})
+		liquidations = []*websocket.BinanceLiquidationData{}
 	}
 
 	response := map[string]interface{}{

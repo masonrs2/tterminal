@@ -5,7 +5,17 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { tradingWebSocket } from '../../lib/websocket'
+import { tradingWebSocket } from '@/lib/websocket'
+import type { 
+  LiquidationUpdate, 
+  PriceUpdate, 
+  DepthUpdate, 
+  TradeUpdate, 
+  KlineUpdate, 
+  MarkPriceUpdate, 
+  WebSocketMessage,
+  MessageCallback 
+} from '@/lib/websocket'
 
 export interface LiquidationData {
   symbol: string
@@ -15,16 +25,6 @@ export interface LiquidationData {
   trade_time: number
   timestamp: number
   usdValue: number // USD value of the liquidation (quantity * price)
-}
-
-export interface LiquidationUpdate {
-  type: 'liquidation_update'
-  symbol: string
-  side: string
-  price: number
-  quantity: number
-  trade_time: number
-  timestamp: number
 }
 
 interface UseWebSocketLiquidationsOptions {
@@ -70,50 +70,54 @@ export const useWebSocketLiquidations = (options: UseWebSocketLiquidationsOption
     return Math.min(baseIntensity * cascadeMultiplier, 100)
   }, [])
 
-  // Handle real-time liquidation updates from WebSocket
+  // Subscribe to real-time liquidation updates
   useEffect(() => {
+    // Skip during SSR
+    if (typeof window === 'undefined') return
+    
     if (!enabled || !symbol) return
 
-    const handleLiquidationUpdate = (update: LiquidationUpdate) => {
-      if (update.symbol !== symbol) return
+    // Handle liquidation updates from WebSocket
+    const handleLiquidationUpdate = (update: PriceUpdate | DepthUpdate | TradeUpdate | KlineUpdate | MarkPriceUpdate | LiquidationUpdate | WebSocketMessage) => {
+      // ULTRA-FAST PROCESSING: Only process liquidation updates for our symbol
+      if (update.type !== 'liquidation_update') return
+      
+      const liquidationUpdate = update as LiquidationUpdate
+      if (liquidationUpdate.symbol !== symbol) return
 
-      // Calculate USD value of liquidation
-      const usdValue = update.quantity * update.price
-
-      const newLiquidation: LiquidationData = {
-        symbol: update.symbol,
-        side: update.side,
-        price: update.price, // This is now the accurate average price from backend
-        quantity: update.quantity,
-        trade_time: update.trade_time,
-        timestamp: update.timestamp,
-        usdValue: usdValue,
+      // PERFORMANCE: Create liquidation data object once
+      const liquidationData: LiquidationData = {
+        symbol: liquidationUpdate.symbol,
+        side: liquidationUpdate.side,
+        price: liquidationUpdate.price,
+        quantity: liquidationUpdate.quantity,
+        trade_time: liquidationUpdate.trade_time,
+        timestamp: liquidationUpdate.timestamp,
+        usdValue: liquidationUpdate.quantity * liquidationUpdate.price,
       }
 
+      // ATOMIC STATE UPDATE: Single setState call for maximum performance
       setState(prev => {
-        const updatedLiquidations = [...prev.liquidations, newLiquidation]
-          .sort((a, b) => b.timestamp - a.timestamp) // Sort by timestamp descending
-          .slice(0, maxHistory) // Keep only recent liquidations
-
-        const highIntensityCount = updatedLiquidations.filter(liq => (liq.usdValue || 0) > 50000).length
-
-        console.log(`🔥 Real-time liquidation: ${newLiquidation.side} ${newLiquidation.quantity} ${symbol} @ $${newLiquidation.price.toFixed(2)} = $${usdValue.toFixed(0)}`)
-
+        // SPEED: Add new liquidation to front of array
+        const newLiquidations = [liquidationData, ...prev.liquidations].slice(0, maxHistory)
+        
         return {
           ...prev,
-          liquidations: updatedLiquidations,
-          totalLiquidations: updatedLiquidations.length,
-          totalUsdValue: prev.totalUsdValue + usdValue,
+          liquidations: newLiquidations,
+          currentLiquidation: liquidationData,
           lastUpdate: Date.now(),
+          totalLiquidations: newLiquidations.length,
+          totalUsdValue: newLiquidations.reduce((total, liq) => total + liq.usdValue, 0),
         }
       })
     }
 
-    // Subscribe to liquidation updates
-    tradingWebSocket.subscribe(handleLiquidationUpdate)
+    // Subscribe to liquidation updates - CORRECTED: Use symbol parameter
+    const unsubscribe = tradingWebSocket.subscribe(symbol, handleLiquidationUpdate)
 
     return () => {
-      tradingWebSocket.unsubscribe(handleLiquidationUpdate)
+      // CORRECTED: Use the returned unsubscribe function
+      unsubscribe()
     }
   }, [symbol, enabled, maxHistory])
 
@@ -155,50 +159,110 @@ export const useWebSocketLiquidations = (options: UseWebSocketLiquidationsOption
 
     const fetchHistoricalLiquidations = async () => {
       try {
-        // Try multiple endpoints to get comprehensive historical data
+        // ULTRA-FAST PARALLEL FETCHING: Multiple endpoints simultaneously
         const endpoints = [
-          // WebSocket cache endpoint (recent real-time data)
-          `http://localhost:8080/api/v1/websocket/liquidations/${symbol}?limit=1000`,
-          // Aggregation endpoint (more historical data)
-          `http://localhost:8080/api/v1/aggregation/liquidations/${symbol}?hours=24`
+          // WebSocket cache endpoint (recent real-time data) - FASTEST & PRIMARY
+          `http://localhost:8080/api/v1/websocket/liquidations/${symbol}?limit=2000`,
+          // Aggregation endpoint (more historical data) - FALLBACK (currently returns empty)
+          `http://localhost:8080/api/v1/aggregation/liquidations/${symbol}?hours=48`
         ]
 
-        let allLiquidations: LiquidationData[] = []
-
-        for (const endpoint of endpoints) {
+        // PERFORMANCE: Parallel fetch with aggressive timeouts
+        const fetchPromises = endpoints.map(async (endpoint, index) => {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), index === 0 ? 1000 : 2000) // 1s for WS, 2s for aggregation
+          
           try {
-            const response = await fetch(endpoint)
-            if (response.ok) {
-              const data = await response.json()
+            const response = await fetch(endpoint, {
+              signal: controller.signal
+            })
+            clearTimeout(timeoutId)
+            
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+            }
+            
+            const data = await response.json()
+            return { data, endpoint, success: true, index }
+          } catch (error) {
+            clearTimeout(timeoutId)
+            console.warn(`LIQUIDATION FETCH FAILED: ${endpoint} - ${error}`)
+            return { data: null, endpoint, success: false, error, index }
+          }
+        })
+
+        // SPEED: Wait for ALL requests with Promise.allSettled (don't wait for slowest)
+        const results = await Promise.allSettled(fetchPromises)
+        let allLiquidations: LiquidationData[] = []
+        let successCount = 0
+
+        console.log(`LIQUIDATION FETCH RESULTS for ${symbol}:`, results.map(r => ({
+          status: r.status,
+          fulfilled: r.status === 'fulfilled' ? r.value : null
+        })))
+
+        // PERFORMANCE: Process results in order of speed (WebSocket first)
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value.success) {
+            const { data, endpoint, index } = result.value
+            successCount++
+            
+            console.log(`PROCESSING ENDPOINT ${index} (${endpoint}):`, {
+              hasData: !!data,
+              dataKeys: data ? Object.keys(data) : [],
+              liquidationsArray: data?.liquidations,
+              liquidationsLength: data?.liquidations?.length || 0
+            })
+            
+            if (data.liquidations && Array.isArray(data.liquidations) && data.liquidations.length > 0) {
+              console.log(`RAW LIQUIDATIONS DATA:`, data.liquidations.slice(0, 2)) // Show first 2 items
               
-              if (data.liquidations && Array.isArray(data.liquidations)) {
-                const liquidations: LiquidationData[] = data.liquidations.map((liq: any) => {
-                  // Handle different data structures from different endpoints
-                  let symbol_field, side_field, price_field, quantity_field, timestamp_field, trade_time_field
+              // CORRECTED: Add proper type annotation for liq parameter
+              const liquidations: LiquidationData[] = data.liquidations.map((liq: any, liqIndex: number) => {
+                console.log(`PROCESSING LIQUIDATION ${liqIndex}:`, liq)
+                
+                // ULTRA-FAST PROCESSING: Handle Binance WebSocket format correctly
+                if (liq.o && liq.e === 'forceOrder') {
+                  // WebSocket format (Binance raw format) - FASTEST PATH
+                  const liquidationOrder = liq.o
+                  const symbol_field = liquidationOrder.s || symbol
+                  const side_field = liquidationOrder.S || 'UNKNOWN'
+                  const price_field = parseFloat(liquidationOrder.ap || liquidationOrder.p || '0') // Use average price (ap) first
+                  const quantity_field = parseFloat(liquidationOrder.q || '0')
                   
-                  if (liq.o) {
-                    // WebSocket format (Binance raw format)
-                    const liquidationOrder = liq.o
-                    symbol_field = liquidationOrder.s || symbol
-                    side_field = liquidationOrder.S || 'UNKNOWN'
-                    price_field = parseFloat(liquidationOrder.ap || liquidationOrder.p || '0')
-                    quantity_field = parseFloat(liquidationOrder.q || '0')
-                    timestamp_field = liq.E || Date.now()
-                    trade_time_field = liquidationOrder.T || timestamp_field
-                  } else {
-                    // Aggregation format (processed format)
-                    symbol_field = symbol
-                    side_field = liq.side || 'UNKNOWN'
-                    price_field = liq.p || liq.price || 0
-                    quantity_field = liq.v || liq.volume || liq.quantity || 0
-                    timestamp_field = liq.t || liq.timestamp || Date.now()
-                    trade_time_field = liq.trade_time || timestamp_field
-                  }
+                  // CRITICAL FIX: Use trade time (T) as primary timestamp for accurate candle mapping
+                  // Trade time is when the liquidation actually occurred, event time is when it was processed
+                  const trade_time_field = liquidationOrder.T || liq.E || Date.now()
+                  const timestamp_field = trade_time_field // Use trade time for candle mapping
                   
-                  // Calculate USD value
+                  // PERFORMANCE: Pre-calculate USD value
                   const usdValue = quantity_field * price_field
                   
-                  return {
+                  const processed = {
+                    symbol: symbol_field,
+                    side: side_field,
+                    price: price_field,
+                    quantity: quantity_field,
+                    trade_time: trade_time_field,
+                    timestamp: timestamp_field, // Now uses trade time for accurate historical placement
+                    usdValue: usdValue,
+                  }
+                  
+                  console.log(`PROCESSED WEBSOCKET LIQUIDATION:`, processed)
+                  return processed
+                } else if (liq.side || liq.price || liq.p) {
+                  // Aggregation format (processed format) - FALLBACK PATH
+                  const symbol_field = symbol
+                  const side_field = liq.side || 'UNKNOWN'
+                  const price_field = liq.p || liq.price || 0
+                  const quantity_field = liq.v || liq.volume || liq.quantity || 0
+                  const timestamp_field = liq.t || liq.timestamp || Date.now()
+                  const trade_time_field = liq.trade_time || timestamp_field
+                  
+                  // PERFORMANCE: Pre-calculate USD value
+                  const usdValue = quantity_field * price_field
+                  
+                  const processed = {
                     symbol: symbol_field,
                     side: side_field,
                     price: price_field,
@@ -207,29 +271,57 @@ export const useWebSocketLiquidations = (options: UseWebSocketLiquidationsOption
                     timestamp: timestamp_field,
                     usdValue: usdValue,
                   }
-                }).filter(liq => liq.price > 0 && liq.quantity > 0) // Filter out invalid liquidations
+                  
+                  console.log(`PROCESSED AGGREGATION LIQUIDATION:`, processed)
+                  return processed
+                } else {
+                  console.log(`INVALID LIQUIDATION FORMAT:`, liq)
+                  // FALLBACK: Return null for invalid data
+                  return null
+                }
+              }).filter((liq: LiquidationData | null): liq is LiquidationData => {
+                const isValid = liq !== null && liq.price > 0 && liq.quantity > 0 && liq.usdValue > 0
+                if (!isValid && liq) {
+                  console.log(`FILTERED OUT INVALID LIQUIDATION:`, liq)
+                }
+                return isValid
+              }) // FAST FILTER: Remove invalid liquidations
 
-                allLiquidations = [...allLiquidations, ...liquidations]
+              console.log(`FINAL PROCESSED LIQUIDATIONS:`, liquidations)
+
+              // PERFORMANCE: Prioritize WebSocket data (index 0)
+              if (index === 0) {
+                allLiquidations = [...liquidations, ...allLiquidations] // WebSocket data first
+              } else {
+                allLiquidations = [...allLiquidations, ...liquidations] // Append other sources
               }
+            } else {
+              console.log(`NO LIQUIDATIONS IN RESPONSE from ${endpoint}`)
             }
-          } catch (endpointError) {
-            console.warn(`Failed to fetch from ${endpoint}:`, endpointError)
+          } else {
+            console.log(`FAILED RESULT:`, result)
           }
         }
 
-        // Remove duplicates based on timestamp and price
-        const uniqueLiquidations = allLiquidations.filter((liq, index, arr) => 
-          arr.findIndex(l => 
-            Math.abs(l.timestamp - liq.timestamp) < 1000 && // Within 1 second
-            Math.abs(l.price - liq.price) < 0.01 // Within 1 cent
-          ) === index
-        )
+        // ULTRA-FAST DEDUPLICATION: Use Map for O(n) performance
+        const uniqueLiquidationsMap = new Map<string, LiquidationData>()
+        
+        for (const liq of allLiquidations) {
+          // Create unique key based on timestamp, price, and quantity
+          const key = `${liq.timestamp}-${liq.price.toFixed(2)}-${liq.quantity.toFixed(4)}`
+          
+          // Keep the first occurrence (WebSocket data has priority)
+          if (!uniqueLiquidationsMap.has(key)) {
+            uniqueLiquidationsMap.set(key, liq)
+          }
+        }
 
-        // Sort by timestamp descending and limit to maxHistory
-        const sortedLiquidations = uniqueLiquidations
-          .sort((a, b) => b.timestamp - a.timestamp)
-          .slice(0, maxHistory)
+        // PERFORMANCE: Convert back to array and sort in single operation
+        const sortedLiquidations = Array.from(uniqueLiquidationsMap.values())
+          .sort((a, b) => b.timestamp - a.timestamp) // Newest first
+          .slice(0, maxHistory) // Limit to maxHistory
 
+        // ATOMIC STATE UPDATE: Single setState call for maximum performance
         setState(prev => ({
           ...prev,
           liquidations: sortedLiquidations,
@@ -237,25 +329,35 @@ export const useWebSocketLiquidations = (options: UseWebSocketLiquidationsOption
           totalUsdValue: sortedLiquidations.reduce((total, liq) => total + liq.usdValue, 0),
         }))
 
-        console.log(`✅ Loaded ${sortedLiquidations.length} real liquidations for ${symbol} from ${endpoints.length} sources`)
-        
-        // Log sample liquidations for verification
+        // ESSENTIAL LOGGING: Only log final result
         if (sortedLiquidations.length > 0) {
-          const sample = sortedLiquidations[0]
-          console.log(`📊 Latest liquidation: ${sample.side} ${sample.quantity} ${symbol} @ $${sample.price.toFixed(2)} = $${sample.usdValue.toFixed(0)}`)
-          
-          // Log side distribution
-          const buyCount = sortedLiquidations.filter(l => l.side === 'BUY').length
-          const sellCount = sortedLiquidations.filter(l => l.side === 'SELL').length
-          console.log(`📊 Liquidation sides: ${buyCount} BUY (longs liquidated), ${sellCount} SELL (shorts liquidated)`)
+          console.log(`LIQUIDATIONS LOADED: ${sortedLiquidations.length} liquidations for ${symbol}`)
+        } else {
+          console.warn(`NO LIQUIDATIONS: No liquidation data found for ${symbol}`)
         }
+
       } catch (error) {
-        console.warn('Failed to fetch historical liquidations:', error)
+        // ROBUST ERROR HANDLING: Don't crash the app
+        console.error(`LIQUIDATION ERROR for ${symbol}:`, error)
+        
+        // Set error state but don't clear existing data
+        setState(prev => ({
+          ...prev,
+          // Keep existing liquidations if any
+          totalLiquidations: prev.liquidations.length,
+          totalUsdValue: prev.liquidations.reduce((total, liq) => total + liq.usdValue, 0),
+        }))
       }
     }
 
+    // IMMEDIATE EXECUTION: No delays for maximum speed
     fetchHistoricalLiquidations()
-  }, [symbol, enabled, maxHistory])
+    
+    // PERFORMANCE: Refresh every 30 seconds (not too frequent to avoid spam)
+    const refreshInterval = setInterval(fetchHistoricalLiquidations, 30000)
+    
+    return () => clearInterval(refreshInterval)
+  }, [symbol, enabled, maxHistory]) // MINIMAL DEPENDENCIES: Only re-run when necessary
 
   // Get liquidations for a specific time range (for chart rendering)
   const getLiquidationsForTimeRange = useCallback((startTime: number, endTime: number): LiquidationData[] => {

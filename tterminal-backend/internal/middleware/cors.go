@@ -12,9 +12,8 @@ func CORS(cfg *config.Config) echo.MiddlewareFunc {
 	return middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:     []string{"*"}, // Configure properly for production
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization", "X-Requested-With"},
+		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization", "X-Requested-With", "Cache-Control", "Pragma"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	})
 }
- 

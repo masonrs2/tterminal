@@ -20,6 +20,7 @@ import { MeasuringToolTooltip } from './MeasuringToolTooltip'
 import { VolumeProfile } from './VolumeProfile'
 
 interface MainChartProps {
+  symbol: string
   candleData: CandleData[]
   volumeProfile: VolumeProfileEntry[]
   heatmapData: HeatmapData[]
@@ -75,6 +76,7 @@ const arePropsEqual = (prevProps: MainChartProps, nextProps: MainChartProps) => 
 
 export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
   const {
+    symbol,
     candleData,
     volumeProfile,
     heatmapData,
@@ -724,7 +726,7 @@ export const MainChart = React.memo<MainChartProps>((props: MainChartProps) => {
       {/* Volume Profile Overlay */}
       {activeIndicators.includes("VPVR") && candleData.length > 0 && (
         <VolumeProfile
-          symbol="BTCUSDT" // TODO: Get from props or context
+          symbol={symbol}
           timeRange={24} // TODO: Make configurable
           rowCount={indicatorSettings.vpvr.rowCount}
           enableRealTime={true}

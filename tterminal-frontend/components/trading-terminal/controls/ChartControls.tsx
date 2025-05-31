@@ -5,8 +5,11 @@
 
 import React, { useCallback, useRef } from 'react'
 import { ChevronDown, Minus, Square, X, Ruler } from 'lucide-react'
+import { SymbolSelector } from './SymbolSelector'
 
 interface ChartControlsProps {
+  selectedSymbol: string
+  onSymbolChange: (symbol: string) => void
   selectedTimeframe: string
   showTimeframes: boolean
   showIndicators: boolean
@@ -47,6 +50,8 @@ const indicators = [
 const drawingToolsList = ["Horizontal Ray", "Rectangle", "Measuring Tool"]
 
 export const ChartControls: React.FC<ChartControlsProps> = ({
+  selectedSymbol,
+  onSymbolChange,
   selectedTimeframe,
   showTimeframes,
   showIndicators,
@@ -108,6 +113,12 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   return (
     <div className={`h-8 bg-[#181818] flex items-center justify-between px-4 border-b border-gray-700 font-mono text-xs ${className}`}>
       <div className="flex items-center space-x-4">
+        {/* Symbol Selector */}
+        <SymbolSelector
+          selectedSymbol={selectedSymbol}
+          onSymbolChange={onSymbolChange}
+        />
+
         {/* Timeframe Dropdown */}
         <div 
           className="relative" 

@@ -18,6 +18,51 @@ interface OrderbookProps {
   onClose: () => void
 }
 
+// Smart number formatting function to prevent text overflow
+const formatLargeNumber = (value: number, maxLength: number = 8): string => {
+  const absValue = Math.abs(value)
+  const sign = value < 0 ? '-' : ''
+  
+  // Handle very small numbers (< 0.001)
+  if (absValue < 0.001 && absValue > 0) {
+    return `${sign}${absValue.toExponential(1)}`
+  }
+  
+  // Handle normal small numbers (0.001 to 999.99)
+  if (absValue < 1000) {
+    const formatted = absValue >= 1 ? absValue.toFixed(2) : absValue.toFixed(3)
+    return `${sign}${formatted}`.length <= maxLength ? `${sign}${formatted}` : `${sign}${absValue.toFixed(1)}`
+  }
+  
+  // Handle thousands (1K to 999.99K)
+  if (absValue < 1000000) {
+    const kValue = absValue / 1000
+    const formatted = kValue >= 100 ? kValue.toFixed(0) : kValue.toFixed(1)
+    return `${sign}${formatted}K`
+  }
+  
+  // Handle millions (1M to 999.99M)
+  if (absValue < 1000000000) {
+    const mValue = absValue / 1000000
+    const formatted = mValue >= 100 ? mValue.toFixed(0) : mValue.toFixed(1)
+    return `${sign}${formatted}M`
+  }
+  
+  // Handle billions (1B+)
+  const bValue = absValue / 1000000000
+  const formatted = bValue >= 100 ? bValue.toFixed(0) : bValue.toFixed(1)
+  return `${sign}${formatted}B`
+}
+
+// Special price formatting (more precision for prices)
+const formatPrice = (price: number): string => {
+  if (price >= 1) {
+    return price.toFixed(2)
+  } else {
+    return price.toFixed(3)
+  }
+}
+
 // Row component matching the screenshot layout
 const OrderbookRow = React.memo(({ 
   entry, 
@@ -138,66 +183,72 @@ const OrderbookRow = React.memo(({
         {/* Buys column */}
         {showBuys && (
           <div 
-            className="w-12 text-right px-1" 
+            className="w-12 text-right px-1 truncate" 
             style={{ 
               color: getAnomalyTextColor('#d1d5db', false)
             }}
+            title={type === 'bid' ? buyVolume.toFixed(2) : ''}
           >
-            {type === 'bid' ? buyVolume.toFixed(3) : ''}
+            {type === 'bid' ? formatLargeNumber(buyVolume, 6) : ''}
           </div>
         )}
         
         {/* Bids column */}
         <div 
-          className="w-16 text-right px-1" 
+          className="w-16 text-right px-1 truncate" 
           style={{ 
             color: getAnomalyTextColor('#d1d5db', type === 'bid')
           }}
+          title={type === 'bid' ? entry.size.toFixed(2) : ''}
         >
-          {type === 'bid' ? entry.size.toFixed(3) : ''}
+          {type === 'bid' ? formatLargeNumber(entry.size, 8) : ''}
         </div>
         
         {/* Price column */}
         <div 
-          className={`w-20 text-center px-1`} 
+          className={`w-20 text-center px-1 truncate`} 
           style={{ 
             color: '#d1d5db'
           }}
+          title={entry.price.toFixed(6)}
         >
-        {entry.price.toFixed(1)}
-      </div>
+          {formatPrice(entry.price)}
+        </div>
         
         {/* Asks column */}
         <div 
-          className="w-16 text-left px-1" 
+          className="w-16 text-left px-1 truncate" 
           style={{ 
             color: getAnomalyTextColor('#d1d5db', type === 'ask')
           }}
+          title={type === 'ask' ? entry.size.toFixed(2) : ''}
         >
-          {type === 'ask' ? entry.size.toFixed(3) : ''}
+          {type === 'ask' ? formatLargeNumber(entry.size, 8) : ''}
         </div>
         
         {/* Sells column */}
         {showSells && (
           <div 
-            className="w-12 text-left px-1" 
+            className="w-12 text-left px-1 truncate" 
             style={{ 
               color: getAnomalyTextColor('#d1d5db', false)
             }}
+            title={type === 'ask' ? sellVolume.toFixed(2) : ''}
           >
-            {type === 'ask' ? sellVolume.toFixed(3) : ''}
+            {type === 'ask' ? formatLargeNumber(sellVolume, 6) : ''}
           </div>
         )}
         
         {/* Delta column */}
         {showDelta && (
           <div 
-            className={`w-12 text-right px-1`} 
+            className={`w-12 text-right px-1 truncate`} 
             style={{ 
               color: delta > 0 ? '#10b981' : delta < 0 ? '#ef4444' : '#9ca3af'
             }}
+            title={delta !== 0 ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)}` : ''}
           >
-            {delta !== 0 ? (delta > 0 ? '+' : '') + delta.toFixed(3) : ''}
+            {delta !== 0 ? (delta > 0 ? '+' : '') + formatLargeNumber(delta, 6) : ''}
           </div>
         )}
       </div>
@@ -819,8 +870,8 @@ export default function HighPerformanceOrderbook({
           
           {/* Compact price display */}
           <div className="relative z-10 px-2 py-0.5 flex items-center justify-center">
-            <span className="text-white font-mono text-xs tracking-wide">
-          {currentPrice.toFixed(1)}
+            <span className="text-white font-mono text-xs tracking-wide" title={currentPrice.toFixed(6)}>
+              {formatPrice(currentPrice)}
             </span>
           </div>
           

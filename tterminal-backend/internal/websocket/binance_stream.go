@@ -281,12 +281,13 @@ func (bs *BinanceStream) startFuturesStream() error {
 			symbolLower+"@kline_5m",    // 5-minute klines
 			symbolLower+"@kline_15m",   // 15-minute klines
 			symbolLower+"@markPrice",   // Mark price updates
+			symbolLower+"@forceOrder",  // Individual symbol liquidation orders
 		)
 	}
 
 	// Add global futures streams
 	streams = append(streams,
-		"!forceOrder@arr",   // Liquidation orders
+		"!forceOrder@arr",   // Global liquidation orders (backup)
 		"!markPrice@arr@1s", // All mark prices (1s updates)
 	)
 
@@ -490,9 +491,12 @@ func (bs *BinanceStream) processCombinedMessage(msg BinanceCombinedStreamMessage
 		}
 
 	case msg.Stream == "!forceOrder@arr":
+		log.Printf("LIQUIDATION STREAM: Received liquidation stream message: %s", string(dataBytes))
 		var liquidationData BinanceLiquidationData
 		if err := json.Unmarshal(dataBytes, &liquidationData); err == nil {
 			bs.processLiquidationUpdate(liquidationData)
+		} else {
+			log.Printf("ERROR: Error parsing liquidation data: %v", err)
 		}
 
 	case msg.Stream == "!markPrice@arr@1s":
@@ -655,6 +659,14 @@ func (bs *BinanceStream) processMarkPriceUpdate(data BinanceMarkPriceData) {
 
 // processLiquidationUpdate processes Futures liquidation updates
 func (bs *BinanceStream) processLiquidationUpdate(data BinanceLiquidationData) {
+	// Debug logging for liquidation data
+	log.Printf("LIQUIDATION RECEIVED: Symbol=%s, Side=%s, Price=%s, AvgPrice=%s, Qty=%s",
+		data.LiquidationOrder.Symbol,
+		data.LiquidationOrder.Side,
+		data.LiquidationOrder.Price,
+		data.LiquidationOrder.AveragePrice,
+		data.LiquidationOrder.OriginalQuantity)
+
 	// Store liquidation data (keep last 1000 per symbol)
 	symbol := data.LiquidationOrder.Symbol
 	if bs.liquidationData[symbol] == nil {
@@ -676,12 +688,14 @@ func (bs *BinanceStream) processLiquidationUpdate(data BinanceLiquidationData) {
 		// Fallback to order price if average price is not available
 		price, err = strconv.ParseFloat(data.LiquidationOrder.Price, 64)
 		if err != nil {
+			log.Printf("ERROR: Error parsing liquidation price for %s: %v", symbol, err)
 			return
 		}
 	}
 
 	quantity, err := strconv.ParseFloat(data.LiquidationOrder.OriginalQuantity, 64)
 	if err != nil {
+		log.Printf("ERROR: Error parsing liquidation quantity for %s: %v", symbol, err)
 		return
 	}
 
@@ -697,6 +711,9 @@ func (bs *BinanceStream) processLiquidationUpdate(data BinanceLiquidationData) {
 		"timestamp":    time.Now().UnixMilli(),
 		"order_status": data.LiquidationOrder.OrderStatus,
 	}
+
+	log.Printf("BROADCAST: Broadcasting liquidation: %s %s $%.2f (qty: %.4f)",
+		symbol, data.LiquidationOrder.Side, price, quantity)
 
 	// Broadcast liquidation update
 	bs.hub.BroadcastLiquidationUpdate(liquidationUpdate)

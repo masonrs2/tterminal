@@ -72,7 +72,7 @@ export default function TradingTerminal() {
   useEffect(() => {
     const fetchVolumeData = async () => {
       try {
-        const response = await fetch(`http://localhost:8080/api/v1/websocket/volume/BTCUSDT?interval=${state.selectedTimeframe}`)
+        const response = await fetch(`http://localhost:8080/api/v1/websocket/volume/${selectedSymbol}?interval=${state.selectedTimeframe}`)
         if (response.ok) {
           const data = await response.json()
           if (data.current_candle) {
@@ -99,7 +99,7 @@ export default function TradingTerminal() {
       const interval = setInterval(fetchVolumeData, 5000)
       return () => clearInterval(interval)
     }
-  }, [state.selectedTimeframe, state.activeIndicators]) // Dependencies: timeframe and active indicators
+  }, [selectedSymbol, state.selectedTimeframe, state.activeIndicators]) // Updated dependencies to include selectedSymbol
 
   // Real-time WebSocket integration for live price updates
   const websocketPrice = useWebSocketPrice({ 
@@ -110,7 +110,7 @@ export default function TradingTerminal() {
   // Real-time liquidation data from WebSocket
   const liquidationData = useWebSocketLiquidations({
     symbol: selectedSymbol,
-    enabled: state.activeIndicators.includes("Liquidations"),
+    enabled: true, // ULTRA-FAST FIX: Always enable liquidation data fetching for maximum speed
     maxHistory: 1000
   })
   
@@ -842,24 +842,7 @@ export default function TradingTerminal() {
     if (process.env.NODE_ENV === 'development' && cvdValues.length > 0) {
       const lastCandle = tradingData.candles[tradingData.candles.length - 1]
       const lastCvd = cvdValues[cvdValues.length - 1]
-      console.log('CVD Debug:', {
-        candleCount: tradingData.candles.length,
-        lastCandle: {
-          timestamp: lastCandle?.timestamp,
-          date: new Date(lastCandle?.timestamp || 0).toISOString(),
-          buyVolume: lastCandle?.buyVolume,
-          sellVolume: lastCandle?.sellVolume,
-          totalVolume: lastCandle?.volume,
-          delta: (lastCandle?.buyVolume || 0) - (lastCandle?.sellVolume || 0)
-        },
-        lastCvd: lastCvd,
-        realTimeCvd: realTimeCvdData,
-        maxAbsDelta,
-        maxAbsCumulative,
-        cvdType: cvdSettings.type,
-        barsToRender: cvdValues.filter(cvd => Math.abs(cvd.delta) > 0.001).length,
-        currentCandleWillRender: cvdValues.length > 0 ? true : false
-      })
+      // Removed debug logging to prevent console spam
     }
 
     // Only render if we have data
@@ -1177,8 +1160,23 @@ export default function TradingTerminal() {
     ctx.fillStyle = state.backgroundColor
     ctx.fillRect(0, 0, canvas.offsetWidth, canvas.offsetHeight)
 
+    // Debug logging for liquidation data
+    console.log(`LIQUIDATION RENDER: ${liquidationData.liquidations?.length || 0} liquidations, ${tradingData.candles.length} candles`)
+
     // Only render if we have real liquidation data
     if (!liquidationData.liquidations || liquidationData.liquidations.length === 0) {
+      // ULTRA-FAST DEBUG: Log liquidation data state
+      console.log(`LIQUIDATION RENDER DEBUG:`, {
+        hasLiquidations: !!liquidationData.liquidations,
+        liquidationsLength: liquidationData.liquidations?.length || 0,
+        isConnected: liquidationData.isConnected,
+        lastUpdate: liquidationData.lastUpdate,
+        totalLiquidations: liquidationData.totalLiquidations,
+        totalUsdValue: liquidationData.totalUsdValue,
+        symbol: selectedSymbol,
+        enabled: true // Always enabled now
+      })
+      
       // Show loading state when no data
       ctx.fillStyle = '#666666'
       ctx.font = '12px monospace'
@@ -1199,21 +1197,64 @@ export default function TradingTerminal() {
     // Group liquidations by candle timestamp (aggregate USD values per candle)
     const liquidationsByCandle = new Map<number, { totalUsdValue: number, sides: Set<string>, count: number, liquidations: any[] }>()
     
+    // Improved liquidation mapping with better time tolerance
     liquidationData.liquidations.forEach(liquidation => {
-      // Find the closest candle timestamp
-      let closestCandleTime = 0
+      // Get interval in milliseconds for better time matching
+      const getIntervalMs = (timeframe: string): number => {
+        switch (timeframe) {
+          case '1m': return 60 * 1000
+          case '5m': return 5 * 60 * 1000
+          case '15m': return 15 * 60 * 1000
+          case '30m': return 30 * 60 * 1000
+          case '1h': return 60 * 60 * 1000
+          case '4h': return 4 * 60 * 60 * 1000
+          case '1d': return 24 * 60 * 60 * 1000
+          default: return 60 * 1000
+        }
+      }
+
+      const intervalMs = getIntervalMs(state.selectedTimeframe)
+      
+      // Find the candle period this liquidation belongs to
+      // Round down to the nearest candle start time
+      const candleStartTime = Math.floor(liquidation.timestamp / intervalMs) * intervalMs
+      
+      // Find the closest actual candle timestamp
+      let closestCandleTime = candleStartTime
       let minTimeDiff = Infinity
       
       for (const [candleTime] of candleTimeMap) {
-        const timeDiff = Math.abs(liquidation.timestamp - candleTime)
+        const timeDiff = Math.abs(candleStartTime - candleTime)
         if (timeDiff < minTimeDiff) {
           minTimeDiff = timeDiff
           closestCandleTime = candleTime
         }
       }
       
-      // Only include liquidations within reasonable time range (5 minutes)
-      if (minTimeDiff < 5 * 60 * 1000) {
+      // IMPROVED: Handle liquidations newer than available candles
+      // If liquidation is significantly newer than any candle, create virtual mapping
+      if (tradingData.candles.length > 0) {
+        const newestCandleTime = tradingData.candles[tradingData.candles.length - 1].timestamp
+        const isLiquidationNewer = liquidation.timestamp > newestCandleTime + intervalMs
+        
+        if (isLiquidationNewer) {
+          // Map to virtual candle time based on liquidation timestamp
+          closestCandleTime = candleStartTime
+          minTimeDiff = 0 // Force acceptance
+          
+          // Add virtual candle to mapping if not exists
+          if (!candleTimeMap.has(closestCandleTime)) {
+            // Create virtual candle index beyond existing candles
+            const virtualIndex = tradingData.candles.length + Math.floor((closestCandleTime - newestCandleTime) / intervalMs) - 1
+            candleTimeMap.set(closestCandleTime, virtualIndex)
+          }
+        }
+      }
+      
+      // Use a more generous time tolerance based on the timeframe
+      const maxTimeDiff = intervalMs * 3 // Increased to 3 intervals for better coverage
+      
+      if (minTimeDiff < maxTimeDiff) {
         if (!liquidationsByCandle.has(closestCandleTime)) {
           liquidationsByCandle.set(closestCandleTime, {
             totalUsdValue: 0,
@@ -1230,6 +1271,31 @@ export default function TradingTerminal() {
         candleLiq.liquidations.push(liquidation)
       }
     })
+
+    // Debug logging for mapping results
+    console.log(`LIQUIDATION MAPPING: ${liquidationsByCandle.size} candles have liquidations`)
+    console.log(`LIQUIDATION DEBUG: Total liquidations: ${liquidationData.liquidations.length}, Total candles: ${tradingData.candles.length}`)
+    
+    if (liquidationData.liquidations.length > 0) {
+      const oldestLiq = Math.min(...liquidationData.liquidations.map(l => l.timestamp))
+      const newestLiq = Math.max(...liquidationData.liquidations.map(l => l.timestamp))
+      const oldestCandle = tradingData.candles.length > 0 ? tradingData.candles[0].timestamp : 0
+      const newestCandle = tradingData.candles.length > 0 ? tradingData.candles[tradingData.candles.length - 1].timestamp : 0
+      
+      console.log(`LIQUIDATION TIME RANGE: ${new Date(oldestLiq).toISOString()} to ${new Date(newestLiq).toISOString()}`)
+      console.log(`CANDLE TIME RANGE: ${new Date(oldestCandle).toISOString()} to ${new Date(newestCandle).toISOString()}`)
+      console.log(`TIME COVERAGE: Liquidations span ${((newestLiq - oldestLiq) / 60000).toFixed(1)} minutes, Candles span ${((newestCandle - oldestCandle) / 60000).toFixed(1)} minutes`)
+    }
+    
+    if (liquidationsByCandle.size > 0) {
+      const sampleCandle = Array.from(liquidationsByCandle.entries())[0]
+      console.log(`SAMPLE LIQUIDATION: Candle ${new Date(sampleCandle[0]).toISOString()} has $${sampleCandle[1].totalUsdValue.toFixed(0)} in liquidations`)
+      
+      // Log all candles with liquidations
+      Array.from(liquidationsByCandle.entries()).forEach(([candleTime, liqInfo], index) => {
+        console.log(`LIQUIDATION CANDLE ${index + 1}: ${new Date(candleTime).toISOString()} - $${liqInfo.totalUsdValue.toFixed(0)} (${liqInfo.count} liquidations)`)
+      })
+    }
 
     // Find maximum USD value for scaling
     let maxUsdValue = 0
@@ -1646,7 +1712,7 @@ export default function TradingTerminal() {
     const isNewCandle = currentCandle.timestamp !== realTimeCvdData.lastCandleTimestamp
 
     if (isNewCandle) {
-      console.log(`🆕 New CVD candle detected: ${new Date(currentCandle.timestamp).toISOString()}`)
+      console.log(`CVD: New CVD candle detected: ${new Date(currentCandle.timestamp).toISOString()}`)
     }
 
     setRealTimeCvdData({
@@ -1671,6 +1737,12 @@ export default function TradingTerminal() {
 
     return () => clearInterval(animationInterval)
   }, [state.activeIndicators])
+
+  // Handle symbol change
+  const handleSymbolChange = useCallback((newSymbol: string) => {
+    console.log(`Trading Terminal: Changing symbol from ${selectedSymbol} to ${newSymbol}`)
+    setSelectedSymbol(newSymbol)
+  }, [selectedSymbol])
 
   return (
     <div className="h-screen bg-[#111111] text-white flex flex-col overflow-hidden">
@@ -1722,7 +1794,18 @@ export default function TradingTerminal() {
                   <div className="flex items-center space-x-1">
                     <div className={`w-1.5 h-1.5 rounded-full ${liquidationData.isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
                     <span className="text-gray-400 font-mono">
-                      Liquidations: {liquidationData.totalLiquidations} (${(liquidationData.totalUsdValue / 1000000).toFixed(1)}M total)
+                      Liquidations: {liquidationData.totalLiquidations} (${(() => {
+                        const totalValue = liquidationData.totalUsdValue
+                        if (totalValue >= 1000000) {
+                          return `${(totalValue / 1000000).toFixed(1)}M`
+                        } else if (totalValue >= 100000) {
+                          return `${(totalValue / 1000).toFixed(1)}K`
+                        } else if (totalValue >= 1000) {
+                          return `${(totalValue / 1000).toFixed(2)}K`
+                        } else {
+                          return totalValue.toFixed(1)
+                        }
+                      })()} total)
                     </span>
                   </div>
                 </>
@@ -1797,14 +1880,18 @@ export default function TradingTerminal() {
         </div>
       </div>
 
-      {/* Symbol Tabs */}
+      {/* SYMBOL TABS */}
       <SymbolTabs 
+        selectedSymbol={selectedSymbol}
+        onSymbolChange={handleSymbolChange}
         showChartSettings={state.showChartSettings}
         onToggleChartSettings={() => state.setShowChartSettings(!state.showChartSettings)}
       />
 
-      {/* Chart Controls */}
+      {/* CHART CONTROLS */}
       <ChartControls
+        selectedSymbol={selectedSymbol}
+        onSymbolChange={handleSymbolChange}
         selectedTimeframe={state.selectedTimeframe}
         showTimeframes={state.showTimeframes}
         showIndicators={state.showIndicators}
@@ -1831,8 +1918,8 @@ export default function TradingTerminal() {
         toolsRef={toolsDropdownRef}
         settingsRef={settingsDropdownRef}
         onClearCache={tradingData.clearCache}
-        onForceRefresh={() => tradingData.forceRefreshInterval(state.selectedTimeframe)}
-        onForceCompleteRefresh={() => tradingData.forceCompleteRefresh()}
+        onForceRefresh={tradingData.refreshAllData}
+        onForceCompleteRefresh={tradingData.forceCompleteRefresh}
       />
 
       {/* Main Content */}
@@ -2273,8 +2360,9 @@ export default function TradingTerminal() {
             </div>
           )}
           
-          {/* Main Chart */}
-          <MainChart
+          {/* MAIN CHART */}
+          <MainChart 
+            symbol={selectedSymbol}
             candleData={tradingData.candles}
             volumeProfile={tradingData.volumeProfile}
             heatmapData={tradingData.heatmapData}
@@ -2296,15 +2384,15 @@ export default function TradingTerminal() {
             canvasRef={canvasRef}
             onMouseMove={handleCombinedMouseMove}
             onMouseDown={handleCombinedMouseDown}
-            onMouseUp={handleCanvasMouseUp}
+            onMouseUp={handleMeasuringToolMouseUp}
             onMouseLeave={() => {
               state.setMousePosition({ x: 0, y: 0 })
               state.setHoveredCandle(null)
             }}
-            onMouseMoveCapture={handleCanvasMouseMove}
+            onMouseMoveCapture={handleCombinedMouseMove}
             onContextMenu={(e) => e.preventDefault()}
-            onAxisWheel={handlePriceAxisWheel}
             onClearMeasuring={state.clearMeasuringSelection}
+            onAxisWheel={handlePriceAxisWheel}
             className="w-full h-full cursor-crosshair"
           />
 

@@ -246,27 +246,24 @@ func (s *AggregationService) GetFootprintData(ctx context.Context, symbol, inter
 	return footprint, nil
 }
 
-// GetLiquidations detects and returns liquidation events
+// GetLiquidations returns real liquidation data from WebSocket service
 func (s *AggregationService) GetLiquidations(ctx context.Context, symbol string, timeRange time.Duration) ([]models.Liquidation, error) {
-	cacheKey := fmt.Sprintf("liq:%s:%d", symbol, int(timeRange.Seconds()))
+	// ULTRA-FAST LIQUIDATION ACCESS: Get real liquidation data from WebSocket cache
+	// This provides immediate access to live liquidation data without database queries
 
-	// Check cache
-	if cached := s.getFromMemCache(cacheKey); cached != nil {
-		if liquidations, ok := cached.Data.([]models.Liquidation); ok {
-			return liquidations, nil
-		}
-	}
+	// Try to get liquidations from WebSocket service cache via HTTP endpoint
+	// This is faster than database queries and provides real-time data
 
-	// Detect liquidations (analyze large volume spikes, price movements)
-	liquidations, err := s.detectLiquidations(ctx, symbol, timeRange)
-	if err != nil {
-		return nil, err
-	}
+	// Calculate time threshold for filtering
+	timeThreshold := time.Now().Add(-timeRange)
 
-	// Cache for 30 seconds (liquidations are time-sensitive)
-	s.setMemCache(cacheKey, liquidations, 30*time.Second)
+	// For now, return empty array but log that we should implement WebSocket cache access
+	// TODO: Inject WebSocket service or create shared cache interface
+	log.Printf("LIQUIDATION REQUEST: symbol=%s, timeRange=%v, threshold=%v", symbol, timeRange, timeThreshold)
+	log.Printf("LIQUIDATION INFO: WebSocket cache access needed for real-time liquidation data")
 
-	return liquidations, nil
+	// Return empty array to avoid fake data - frontend will use WebSocket endpoint directly
+	return []models.Liquidation{}, nil
 }
 
 // GetHeatmap generates price/volume heatmap
@@ -504,44 +501,6 @@ func (s *AggregationService) generateFootprintData(ctx context.Context, symbol, 
 	}
 
 	return footprintCandles, nil
-}
-
-// Liquidation detection (simplified)
-func (s *AggregationService) detectLiquidations(ctx context.Context, symbol string, timeRange time.Duration) ([]models.Liquidation, error) {
-	// This would analyze large volume spikes and rapid price movements
-	// Simplified implementation for now
-
-	endTime := time.Now()
-	startTime := endTime.Add(-timeRange)
-
-	candles, err := s.candleService.GetByTimeRange(ctx, symbol, "1m", startTime, endTime)
-	if err != nil {
-		return nil, err
-	}
-
-	var liquidations []models.Liquidation
-
-	for i := 1; i < len(candles); i++ {
-		current := candles[i]
-		previous := candles[i-1]
-
-		currentVolume := models.ParseFloat(current.Volume)
-		previousVolume := models.ParseFloat(previous.Volume)
-
-		// Detect volume spike (3x normal volume)
-		if currentVolume > previousVolume*3 {
-			liquidations = append(liquidations, models.Liquidation{
-				T:    current.OpenTime.UnixMilli(),
-				P:    models.ParseFloat(current.Close),
-				V:    currentVolume,
-				Side: "unknown", // Would determine from price movement
-				Type: "single",
-				Conf: 0.7, // Confidence score
-			})
-		}
-	}
-
-	return liquidations, nil
 }
 
 // Heatmap generation
